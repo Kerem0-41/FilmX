@@ -1,0 +1,19 @@
+name = "filmx-robot"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+account_id = "c4a200546619470faca234621495e5ac"   # turkmenkerem289 hesabı (chatbox-wake'e dokunulmaz)
+
+# Sohbete izin verilen sayfa adresleri (virgülle). "null" = masaüstünden açılan index.html
+[vars]
+IZINLI_ADRESLER = "http://127.0.0.1:8791,null"
+
+# Gizli değişkenler (dosyaya YAZILMAZ, komutla girilir):
+#   npx wrangler secret put GEMINI_KEY
+#   npx wrangler secret put ERISIM_ANAHTARI   (isteğe bağlı: sadece sizin sayfanız kullanabilsin)
+
+
+# FilmX veritabanı (Cloudflare D1, ücretsiz plan)
+[[d1_databases]]
+binding = "filmx_db"
+database_name = "filmx-db"
+database_id = "e3ead196-2a24-48b9-a9f7-677c7f38e88c"

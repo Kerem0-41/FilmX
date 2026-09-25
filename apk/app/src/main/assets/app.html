@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>FilmX</title>
+<style>
+:root{
+  --bg:#0b0d13; --bg2:#0f121a; --card:#161a26; --line:#232838;
+  --tx:#f5f6fa; --mut:#8b93a7; --red:#e50914; --red2:#ff3d47; --gold:#f5c518;
+  --nav:64px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,Roboto,Arial,sans-serif;
+  overflow-x:hidden;overscroll-behavior:none}
+img{display:block;max-width:100%}
+a{color:inherit;text-decoration:none}
+
+/* ---- Splash ---- */
+#splash{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;align-items:center;justify-content:center;
+  transition:opacity .5s;flex-direction:column;gap:14px}
+#splash.hide{opacity:0;pointer-events:none}
+.logoX{font-size:52px;font-weight:900;letter-spacing:1px}
+.logoX b{color:var(--red)}
+.spin{width:34px;height:34px;border:3px solid #222836;border-top-color:var(--red);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ---- Header ---- */
+header{position:sticky;top:0;z-index:60;background:linear-gradient(180deg,var(--bg) 60%,rgba(11,13,19,.9));
+  padding:calc(env(safe-area-inset-top) + 10px) 12px 10px;display:flex;align-items:center;gap:10px}
+.brand{font-size:24px;font-weight:900;flex:0 0 auto}
+.brand b{color:var(--red)}
+.search{flex:1;display:flex;align-items:center;background:var(--card);border:1px solid var(--line);
+  border-radius:26px;padding:0 14px;height:46px}
+.search input{flex:1;background:none;border:none;outline:none;color:var(--tx);font-size:16px;height:100%}
+.search input::placeholder{color:var(--mut)}
+.search .ic{font-size:18px;color:var(--mut);margin-right:8px}
+.search .clr{color:var(--mut);font-size:20px;padding:4px;display:none}
+.gear{flex:0 0 auto;width:44px;height:44px;border-radius:50%;background:var(--card);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:20px}
+
+/* ---- Main ---- */
+main{padding-bottom:calc(var(--nav) + env(safe-area-inset-bottom) + 10px);min-height:calc(100vh - 66px)}
+.view{display:none}
+.view.on{display:block}
+
+/* Hero */
+.hero{position:relative;margin:8px 12px 4px;border-radius:18px;overflow:hidden;height:200px}
+.hero img{width:100%;height:100%;object-fit:cover}
+.hero .grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,13,19,.1),rgba(11,13,19,.95))}
+.hero .info{position:absolute;left:16px;right:16px;bottom:14px}
+.hero h2{font-size:22px;margin-bottom:6px;text-shadow:0 2px 8px #000}
+.hero .row{display:flex;gap:8px;align-items:center}
+.hero .pl{background:var(--red);color:#fff;font-weight:800;padding:9px 20px;border-radius:24px;font-size:15px}
+
+/* Rows */
+.rowsec{margin:16px 0 4px}
+.rowsec h3{font-size:17px;font-weight:800;margin:0 12px 10px}
+.rail{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding:0 12px 6px;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.pcard{flex:0 0 auto;width:122px;scroll-snap-align:start;cursor:pointer}
+.pcard .pw{position:relative;border-radius:12px;overflow:hidden;background:var(--card);aspect-ratio:2/3}
+.pcard img{width:100%;height:100%;object-fit:cover}
+.pcard .im{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.75);color:var(--gold);
+  font-size:11px;font-weight:800;padding:2px 6px;border-radius:6px}
+.pcard h4{font-size:12.5px;margin:6px 2px 0;line-height:1.25;font-weight:600;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pcard .yr{font-size:11px;color:var(--mut);margin:2px}
+
+/* Grid (dizi/uzakdogu/favori/arama) */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px 12px}
+.gcard{cursor:pointer}
+.gcard .pw{position:relative;border-radius:12px;overflow:hidden;background:var(--card);aspect-ratio:2/3}
+.gcard img{width:100%;height:100%;object-fit:cover}
+.gcard .im{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.75);color:var(--gold);
+  font-size:11px;font-weight:800;padding:2px 6px;border-radius:6px}
+.gcard h4{font-size:12.5px;margin:6px 2px 0;line-height:1.25;font-weight:600;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.gcard .yr{font-size:11px;color:var(--mut);margin:2px}
+.secTitle{font-size:19px;font-weight:800;padding:14px 12px 0}
+.empty{color:var(--mut);text-align:center;padding:60px 20px;line-height:1.8}
+
+/* ---- Bottom nav ---- */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:70;height:calc(var(--nav) + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);background:rgba(15,18,26,.97);border-top:1px solid var(--line);
+  display:flex;backdrop-filter:blur(8px)}
+.nav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  color:var(--mut);font-size:11px;font-weight:600}
+.nav a .ni{font-size:21px}
+.nav a.on{color:var(--red2)}
+
+/* ---- Detail overlay ---- */
+.detail{position:fixed;inset:0;z-index:120;background:var(--bg);overflow-y:auto;
+  transform:translateY(100%);transition:transform .28s;overscroll-behavior:contain}
+.detail.open{transform:none}
+.dhero{position:relative;height:300px}
+.dhero .bg{position:absolute;inset:0;background-size:cover;background-position:center;filter:brightness(.55)}
+.dhero .gr{position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,13,19,.2),var(--bg))}
+.dclose{position:absolute;top:calc(env(safe-area-inset-top) + 10px);left:12px;z-index:5;width:40px;height:40px;
+  border-radius:50%;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font-size:22px}
+.dbody{position:relative;margin-top:-70px;padding:0 16px 40px;z-index:2}
+.dbody h1{font-size:25px;margin-bottom:8px;line-height:1.15}
+.badges{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+.badge{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px 9px;font-size:12px;color:var(--mut)}
+.badge.g{color:var(--gold)}
+.btnrow{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
+.watch{display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,var(--red),var(--red2));
+  color:#fff;font-size:19px;font-weight:800;padding:16px;border-radius:14px;border:none;width:100%;
+  box-shadow:0 8px 22px rgba(229,9,20,.45)}
+.watch:active{transform:scale(.99)}
+.watch2{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--card);border:1px solid var(--line);
+  color:var(--tx);font-size:15px;font-weight:700;padding:13px;border-radius:12px;width:100%}
+.fav{display:flex;align-items:center;justify-content:center;gap:8px;background:transparent;border:1px solid var(--line);
+  color:var(--tx);font-size:15px;font-weight:700;padding:13px;border-radius:12px;width:100%}
+.fav.on{border-color:var(--red);color:var(--red2)}
+.srctabs{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 2px}
+.srctab{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700}
+.srctab.active{border-color:var(--red);color:var(--red2);background:rgba(229,9,20,.08)}
+.srctab .s{display:block;font-size:10px;color:var(--mut);font-weight:500}
+.ozet{color:#d4d9e4;font-size:14.5px;line-height:1.7;margin:16px 0}
+.drow{display:flex;gap:10px;font-size:13.5px;margin-bottom:8px}
+.drow .k{color:var(--mut);flex:0 0 82px}
+.novideo{color:var(--mut);text-align:center;padding:24px;background:var(--card);border-radius:12px;font-size:13.5px}
+
+/* ---- Player modal (tarayici yedek; APK'da native player kullanilir) ---- */
+.pmodal{position:fixed;inset:0;z-index:150;background:#000;display:none}
+.pmodal.on{display:block}
+.pmodal iframe{width:100%;height:100%;border:0}
+.pmodal .x{position:absolute;top:calc(env(safe-area-inset-top) + 8px);right:10px;z-index:3;width:42px;height:42px;
+  border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center}
+.toast{position:fixed;left:50%;bottom:calc(var(--nav) + 24px);transform:translateX(-50%);z-index:180;
+  background:#222836;color:#fff;padding:12px 18px;border-radius:24px;font-size:14px;opacity:0;transition:opacity .3s;
+  pointer-events:none;max-width:88%;text-align:center}
+.toast.on{opacity:1}
+
+/* ---- Settings ---- */
+.sheet{position:fixed;inset:0;z-index:130;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
+.sheet.on{display:flex}
+.sheet .card2{background:var(--bg2);width:100%;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line)}
+.sheet h3{font-size:19px;margin-bottom:10px}
+.sheet p{color:var(--mut);font-size:14px;line-height:1.7;margin-bottom:8px}
+.sheet .close{margin-top:14px;background:var(--card);border:1px solid var(--line);color:var(--tx);
+  width:100%;padding:13px;border-radius:12px;font-weight:700;font-size:15px}
+
+/* ---- LANDSCAPE (yatay) ---- */
+@media (orientation:landscape){
+  .hero{height:240px}
+  .grid{grid-template-columns:repeat(6,1fr)}
+  .pcard{width:120px}
+  .dhero{height:56vh}
+}
+@media (min-width:560px) and (orientation:portrait){
+  .grid{grid-template-columns:repeat(4,1fr)}
+}
+@media (min-width:820px){
+  .grid{grid-template-columns:repeat(7,1fr)}
+  .pcard{width:135px}
+}
+</style>
+</head>
+<body>
+
+<div id="splash"><div class="logoX">Film<b>X</b></div><div class="spin"></div></div>
+
+<header>
+  <div class="brand">Film<b>X</b></div>
+  <div class="search">
+    <span class="ic">🔍</span>
+    <input id="q" type="search" placeholder="Film, dizi ara…" autocomplete="off">
+    <span class="clr" id="clr">✕</span>
+  </div>
+  <div class="gear" onclick="openSet()">⚙️</div>
+</header>
+
+<main>
+  <section id="v-home" class="view on"></section>
+  <section id="v-dizi" class="view"></section>
+  <section id="v-uzak" class="view"></section>
+  <section id="v-fav" class="view"></section>
+  <section id="v-search" class="view"></section>
+</main>
+
+<nav class="nav">
+  <a id="t-home" class="on" onclick="tab('home')"><span class="ni">🏠</span>Öne Çıkanlar</a>
+  <a id="t-dizi" onclick="tab('dizi')"><span class="ni">📺</span>Dizi</a>
+  <a id="t-uzak" onclick="tab('uzak')"><span class="ni">🌏</span>Uzak Doğu</a>
+  <a id="t-fav" onclick="tab('fav')"><span class="ni">❤️</span>Favoriler</a>
+</nav>
+
+<!-- Detail -->
+<div class="detail" id="detail">
+  <div class="dhero"><div class="bg" id="dBg"></div><div class="gr"></div>
+    <div class="dclose" onclick="closeDetail()">✕</div></div>
+  <div class="dbody" id="dBody"></div>
+</div>
+
+<!-- Player (tarayici yedek) -->
+<div class="pmodal" id="pmodal"><div class="x" onclick="closePlayer()">✕</div><iframe id="pframe" allow="autoplay; fullscreen; encrypted-media" allowfullscreen></iframe></div>
+
+<!-- Settings -->
+<div class="sheet" id="sheet"><div class="card2">
+  <h3>Film<b style="color:var(--red)">X</b> Hakkında</h3>
+  <p>Kişisel film & dizi izleme uygulaması. Tüm içerik üçüncü taraf sitelerden alınır.</p>
+  <p id="setInfo" style="font-size:12px"></p>
+  <button class="close" onclick="closeSet()">Kapat</button>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script src="movies.js"></script>
+<script>
+/* ================= ORTAM ================= */
+var NATIVE = !!(window.FilmXPlayer);           // APK içinde mi?
+var SITE1_REF = "https://www.fullhdfilmizlesene.life/";
+var M = window.MOVIES || [];
+var ph = "data:image/svg+xml;utf8,"+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='200' height='300'><rect width='200' height='300' fill='#161a26'/><text x='100' y='150' fill='#8b93a7' font-size='13' text-anchor='middle'>Görsel yok</text></svg>");
+function esc(s){return (s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function imgFb(el){el.onerror=null;el.src=ph;}
+function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on');},2600);}
+
+/* ================= VERİ ================= */
+var FILMS = M.filter(function(m){return m.c!=='dizi'&&m.c!=='uzakdogu';});
+var DIZI  = M.filter(function(m){return m.c==='dizi';});
+var UZAK  = M.filter(function(m){return m.c==='uzakdogu';});
+var bySlug={}; M.forEach(function(m){if(m.s)bySlug[m.s]=m;});
+
+var GENRES=[
+  {k:'encok',n:'🔥 Öne Çıkanlar'},{k:'aksiyon',n:'Aksiyon'},{k:'komedi',n:'Komedi'},
+  {k:'dram',n:'Dram'},{k:'bilimkurgu',n:'Bilim Kurgu'},{k:'korku',n:'Korku'},
+  {k:'gerilim',n:'Gerilim'},{k:'animasyon',n:'Animasyon'},{k:'fantastik',n:'Fantastik'},
+  {k:'macera',n:'Macera'},{k:'suc',n:'Suç'},{k:'belgesel',n:'Belgesel'},
+  {k:'romantik',n:'Romantik'},{k:'hint',n:'Hint'},{k:'savas',n:'Savaş'}
+];
+function imdbV(m){var v=parseFloat(m&&m.i)||0;return v>=9.5?0:v;}
+function byYear(a){return a.slice().sort(function(x,y){return (parseInt(y.y)||0)-(parseInt(x.y)||0);});}
+function byImdb(a){return a.slice().sort(function(x,y){return imdbV(y)-imdbV(x);});}
+
+/* ================= RENDER ================= */
+function pcard(m){
+  return '<div class="pcard" onclick="openDetail(bySlug[\''+jsq(m.s)+'\']||findByT(\''+jsq(m.t)+'\'))">'
+    +'<div class="pw">'+(m.i?'<div class="im">★ '+esc(m.i)+'</div>':'')
+    +'<img loading="lazy" src="'+(m.p||ph)+'" onerror="imgFb(this)"></div>'
+    +'<h4>'+esc(m.t)+'</h4>'+(m.y?'<div class="yr">'+esc(m.y)+'</div>':'')+'</div>';
+}
+function gcard(m){
+  return '<div class="gcard" onclick="openDetail(bySlug[\''+jsq(m.s)+'\']||findByT(\''+jsq(m.t)+'\'))">'
+    +'<div class="pw">'+(m.i?'<div class="im">★ '+esc(m.i)+'</div>':'')
+    +'<img loading="lazy" src="'+(m.p||ph)+'" onerror="imgFb(this)"></div>'
+    +'<h4>'+esc(m.t)+'</h4>'+(m.y?'<div class="yr">'+esc(m.y)+'</div>':'')+'</div>';
+}
+function jsq(s){return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+function findByT(t){return M.find(function(m){return m.t===t;});}
+
+function buildHome(){
+  var el=document.getElementById('v-home');
+  var pop=byYear(FILMS.filter(function(m){return m.c==='encok';}));
+  var hero=(byImdb(FILMS.filter(function(m){return m.p&&(parseInt(m.y)||0)>=2023;}))[0])||FILMS[0];
+  var html='';
+  if(hero){html+='<div class="hero" onclick="openDetail(bySlug[\''+jsq(hero.s)+'\'])">'
+    +'<img src="'+(hero.p||ph)+'" onerror="imgFb(this)"><div class="grad"></div>'
+    +'<div class="info"><h2>'+esc(hero.t)+'</h2><div class="row"><span class="pl">▶ İZLE</span>'
+    +(hero.i?'<span class="badge g">★ '+esc(hero.i)+'</span>':'')+(hero.y?'<span class="badge">'+esc(hero.y)+'</span>':'')+'</div></div></div>';}
+  GENRES.forEach(function(g){
+    var list=FILMS.filter(function(m){return m.c===g.k;});
+    if(g.k==='encok')list=pop;
+    if(!list.length)return;
+    list=byYear(list).slice(0,40);
+    html+='<div class="rowsec"><h3>'+g.n+'</h3><div class="rail">'+list.map(pcard).join('')+'</div></div>';
+  });
+  el.innerHTML=html;
+}
+function buildGrid(view,list,title){
+  var el=document.getElementById(view);
+  if(!list.length){el.innerHTML='<div class="empty">'+(title||'')+'<br>İçerik yok 🙁</div>';return;}
+  el.innerHTML='<div class="secTitle">'+title+' <span style="color:var(--mut);font-size:14px;font-weight:600">('+list.length+')</span></div>'
+    +'<div class="grid">'+list.map(gcard).join('')+'</div>';
+}
+
+/* ================= SEKME ================= */
+function tab(name){
+  ['home','dizi','uzak','fav','search'].forEach(function(n){
+    document.getElementById('v-'+n).classList.toggle('on',n===name);
+  });
+  ['home','dizi','uzak','fav'].forEach(function(n){
+    var t=document.getElementById('t-'+n); if(t)t.classList.toggle('on',n===name);
+  });
+  if(name==='dizi'&&!document.getElementById('v-dizi').dataset.b){buildGrid('v-dizi',byYear(DIZI),'📺 Diziler');document.getElementById('v-dizi').dataset.b=1;}
+  if(name==='uzak'&&!document.getElementById('v-uzak').dataset.b){buildGrid('v-uzak',byYear(UZAK),'🌏 Uzak Doğu');document.getElementById('v-uzak').dataset.b=1;}
+  if(name==='fav')buildFav();
+  window.scrollTo(0,0);
+}
+function buildFav(){
+  var f=getFavs();
+  if(!f.length){document.getElementById('v-fav').innerHTML='<div class="empty">Henüz favori yok 🤍<br>Bir içeriği açıp <b>❤️ Favorilere ekle</b> de.</div>';return;}
+  buildGrid('v-fav',f,'❤️ Favorilerim');
+}
+
+/* ================= ARAMA ================= */
+function normT(s){return (s||'').toLocaleLowerCase('tr').replace(/ç/g,'c').replace(/ğ/g,'g').replace(/ı/g,'i').replace(/ö/g,'o').replace(/ş/g,'s').replace(/ü/g,'u').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
+var st;
+function doSearch(q){
+  var nq=normT(q); if(nq.length<2)return;
+  var res=[];
+  M.forEach(function(m){
+    var nt=normT(m.t); if(!nt)return; var rel=0;
+    if(nt===nq)rel=100; else if(nt.indexOf(nq)===0)rel=70;
+    else if((' '+nt+' ').indexOf(' '+nq)>=0)rel=55;
+    else if(nt.indexOf(nq)>=0)rel=40;
+    else{ var w=nq.split(' ').filter(Boolean),hit=0; w.forEach(function(x){if(nt.indexOf(x)>=0)hit++;}); if(w.length&&hit===w.length)rel=25+hit; }
+    if(rel){m._rel=rel;res.push(m);}
+  });
+  res.sort(function(x,y){return (y._rel-x._rel)||(imdbV(y)-imdbV(x));});
+  var el=document.getElementById('v-search');
+  if(!res.length){el.innerHTML='<div class="empty">"'+esc(q)+'" için sonuç yok 😕</div>';}
+  else el.innerHTML='<div class="secTitle">Arama: "'+esc(q)+'" <span style="color:var(--mut);font-size:14px">('+res.length+')</span></div><div class="grid">'+res.slice(0,120).map(gcard).join('')+'</div>';
+  ['home','dizi','uzak','fav','search'].forEach(function(n){document.getElementById('v-'+n).classList.toggle('on',n==='search');});
+}
+
+/* ================= FAVORİ ================= */
+function getFavs(){try{return JSON.parse(localStorage.getItem('filmx_fav')||'[]');}catch(e){return[];}}
+function setFavs(a){try{localStorage.setItem('filmx_fav',JSON.stringify(a));}catch(e){}}
+function isFav(m){return m&&getFavs().some(function(x){return x.s===m.s&&x.t===m.t;});}
+function toggleFav(){var m=curMovie;if(!m)return;var f=getFavs();var on=f.some(function(x){return x.s===m.s&&x.t===m.t;});
+  if(on)f=f.filter(function(x){return !(x.s===m.s&&x.t===m.t);});else f.unshift({t:m.t,s:m.s,p:m.p,i:m.i,y:m.y,c:m.c,u:m.u,x:m.x,v:m.v});
+  setFavs(f);renderDetail();}
+
+/* ================= DETAY ================= */
+var curMovie=null,curVids=[],curSrc=0;
+function embedUrl(m){var u=(m&&m.u)?m.u:'';
+  if(u.indexOf('dizipal')>=0&&u.indexOf('/dizi/')>=0)return u.replace('/dizi/','/bolum/')+'-1-sezon-1-bolum';
+  return u;}
+function refOf(u){try{return new URL(u).origin+'/';}catch(e){return '';}}
+function srcPage(m){ if(m.x)return m.u||''; return SITE1_REF+'film/'+(m.s||'')+'/'; }
+
+function openDetail(m){
+  if(!m)return;
+  curMovie=m; curSrc=0;
+  if(m.x){ curVids=[{u:embedUrl(m),n:'Kaynak',l:'Oynat'}]; }
+  else { curVids=(m.v&&m.v.length)?m.v:[]; }
+  document.getElementById('dBg').style.backgroundImage="url('"+(m.p||'')+"')";
+  renderDetail();
+  document.getElementById('detail').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeDetail(){document.getElementById('detail').classList.remove('open');document.body.style.overflow='';}
+function setSrc(i){curSrc=i;renderDetail();}
+
+function renderDetail(){
+  var m=curMovie;if(!m)return;
+  var badges=[m.y?'<span class="badge">'+esc(m.y)+'</span>':'',m.i?'<span class="badge g">★ '+esc(m.i)+'</span>':'',
+    m.sr?'<span class="badge">'+esc(m.sr)+' dk</span>':'',m.tr?'<span class="badge">'+esc(m.tr)+'</span>':'',
+    m.x?'<span class="badge">'+(m.c==='uzakdogu'?'Uzak Doğu':'Dizi')+'</span>':''].join('');
+  var srctabs='';
+  if(curVids.length>1){srctabs='<div class="srctabs">'+curVids.map(function(v,i){
+    return '<div class="srctab '+(i===curSrc?'active':'')+'" onclick="setSrc('+i+')">'+esc(v.n||('Kaynak '+(i+1)))+'<span class="s">'+esc(v.l||'')+'</span></div>';}).join('')+'</div>';}
+  var canPlay=curVids.length>0;
+  var rows=[m.yo?drow('Yönetmen',m.yo):'',m.oy?drow('Oyuncular',m.oy):'',m.dl?drow('Dil',m.dl):''].join('');
+  var favon=isFav(m);
+  var html='<h1>'+esc(m.t)+'</h1><div class="badges">'+badges+'</div>'
+    +srctabs
+    +'<div class="btnrow">'
+    +'<button class="watch" onclick="playCur()">▶ İZLE</button>'
+    +'<button class="watch2" onclick="openSource()">🎬 Sitesinde İzle ↗</button>'
+    +'<button class="fav '+(favon?'on':'')+'" onclick="toggleFav()">'+(favon?'❤️ Favorilerde':'🤍 Favorilere Ekle')+'</button>'
+    +'</div>';
+  if(!canPlay)html+='<div class="novideo">Bu içerik için oynatıcı bulunamadı. <b>Sitesinde İzle</b> ile açabilirsin.</div>';
+  if(m.o)html+='<div class="ozet">'+esc(m.o)+'</div>';
+  html+=rows;
+  document.getElementById('dBody').innerHTML=html;
+}
+function drow(k,v){return '<div class="drow"><div class="k">'+k+'</div><div>'+esc(v)+'</div></div>';}
+
+/* ================= OYNATMA ================= */
+function playCur(){
+  var m=curMovie;if(!m)return;
+  var v=curVids[curSrc];
+  if(!v||!v.u){ openSource(); return; }
+  var ref = m.x ? refOf(m.u) : SITE1_REF;
+  if(NATIVE){ FilmXPlayer.open(v.u, ref, m.t||''); }
+  else { openIframe(v.u); }   // tarayıcı yedeği
+}
+function openSource(){
+  var m=curMovie;if(!m)return;
+  var u=srcPage(m);
+  if(NATIVE){ FilmXPlayer.open(u, refOf(u), m.t||''); }
+  else { window.open(u,'_blank'); }
+}
+function openIframe(u){document.getElementById('pframe').src=u;document.getElementById('pmodal').classList.add('on');}
+function closePlayer(){document.getElementById('pmodal').classList.remove('on');document.getElementById('pframe').src='about:blank';}
+
+/* ================= AYARLAR ================= */
+function openSet(){document.getElementById('setInfo').textContent='Sürüm 1.0 · '+(NATIVE?'APK (native motor aktif ✓)':'Tarayıcı önizleme')+' · '+M.length+' içerik';document.getElementById('sheet').classList.add('on');}
+function closeSet(){document.getElementById('sheet').classList.remove('on');}
+
+/* ================= BAŞLAT ================= */
+(function init(){
+  buildHome();
+  var q=document.getElementById('q'),clr=document.getElementById('clr');
+  q.addEventListener('input',function(){
+    var val=q.value.trim();clr.style.display=val?'block':'none';clearTimeout(st);
+    if(val.length<2){ if(!val)tab('home'); return; }
+    st=setTimeout(function(){doSearch(val);},300);
+  });
+  clr.onclick=function(){q.value='';clr.style.display='none';tab('home');q.blur();};
+  // deep-link kancasi (?tab=dizi | ?open=INDEX) — hizli gezinme/test
+  try{var _p=new URLSearchParams(location.search);
+    if(_p.get('tab'))tab(_p.get('tab'));
+    if(_p.get('open')!==null){var _m=M[parseInt(_p.get('open'))||0];if(_m)openDetail(_m);}
+  }catch(e){}
+  setTimeout(function(){document.getElementById('splash').classList.add('hide');},700);
+})();
+// Android geri tuşu WebView tarafından goBack ile yönetilir; detay açıksa kapatalım
+window.onFilmXBack=function(){
+  var pm=document.getElementById('pmodal');if(pm.classList.contains('on')){closePlayer();return true;}
+  var d=document.getElementById('detail');if(d.classList.contains('open')){closeDetail();return true;}
+  return false;
+};
+</script>
+</body>
+</html>
