@@ -1,0 +1,5 @@
+_derleme/
+robot/.erisim
+robot/adres.txt
+robot/.wrangler/
+node_modules/

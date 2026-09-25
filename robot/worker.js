@@ -81,6 +81,21 @@ async function modeleSor(model, icerik, env) {
   return metin;
 }
 
+// "Link Ekle" için: film/dizi adından afiş + yıl + IMDb kimliği (IMDb öneri servisi; sayfadan CORS yüzünden doğrudan çağrılamıyor)
+async function bilgiBul(g) {
+  const ad = String(g.ad || '').trim().slice(0, 120); if (!ad) return { bulundu: false };
+  const dizi = g.tur === 'dizi';
+  const q = ad.toLocaleLowerCase('tr').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').replace(/[^a-z0-9 ]+/g, ' ').trim();
+  try {
+    const r = await fetch('https://v3.sg.media-imdb.com/suggestion/x/' + encodeURIComponent(q) + '.json', { cf: { cacheTtl: 86400 } });
+    const j = await r.json();
+    const uygun = (j.d || []).filter(x => /^tt/.test(x.id) && (dizi ? /tvSeries|tvMiniSeries/.test(x.qid || '') : /movie|tvMovie|video/.test(x.qid || '')));
+    const x = uygun.find(x => !g.yil || !x.y || Math.abs(x.y - +g.yil) <= 1) || uygun[0];
+    if (!x) return { bulundu: false };
+    return { bulundu: true, imdb: x.id, ad: x.l, yil: x.y || '', afis: x.i && x.i.imageUrl ? x.i.imageUrl.replace(/\._V1_.*\.jpg$/, '._V1_QL75_UX500_.jpg') : '', oyuncular: x.s || '' };
+  } catch (e) { return { bulundu: false }; }
+}
+
 export default {
   async fetch(req, env, ctx) {
     const h = cors(req, env);
@@ -92,6 +107,7 @@ export default {
     if (sinirAsildi(ip)) return json({ cevap: 'Biraz hızlı gidiyoruz 🙂 Bir dakika sonra tekrar sorar mısın?', oneriler: [], kategori: '' }, 200, h);
 
     let g; try { g = await req.json(); } catch (e) { return json({ hata: 'geçersiz istek' }, 400, h); }
+    if (g.islem === 'bilgi') return json(await bilgiBul(g), 200, h);
     const soru = String(g.soru || '').trim().slice(0, 600);
     if (!soru) return json({ hata: 'soru boş' }, 400, h);
     const gecmis = (Array.isArray(g.gecmis) ? g.gecmis : []).slice(-GECMIS_MESAJ)
