@@ -5,7 +5,7 @@ account_id = "c4a200546619470faca234621495e5ac"   # turkmenkerem289 hesabı (cha
 
 # Sohbete izin verilen sayfa adresleri (virgülle). "null" = masaüstünden açılan index.html
 [vars]
-IZINLI_ADRESLER = "http://127.0.0.1:8791,null"
+IZINLI_ADRESLER = "http://127.0.0.1:8791,http://localhost:8791,null"
 
 # Gizli değişkenler (dosyaya YAZILMAZ, komutla girilir):
 #   npx wrangler secret put GEMINI_KEY
