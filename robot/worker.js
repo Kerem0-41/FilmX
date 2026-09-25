@@ -27,7 +27,8 @@ Cevabı SADECE şu JSON biçiminde ver, başka hiçbir şey yazma:
 const ONBELLEK_SN = 60 * 60 * 24;     // aynı soru 1 gün önbellekten cevaplanır
 const DAKIKA_SINIRI = 12;             // kişi (IP) başına dakikada en fazla soru
 const GECMIS_MESAJ = 8;               // modele gönderilen en fazla eski mesaj
-const sayac = new Map();              // IP -> [zamanlar] (aynı Worker örneği içinde)
+const sayac = new Map();
+const GUNLUK_SINIR = 400;              // robot için günde en fazla soru (tüm kullanıcılar)              // IP -> [zamanlar] (aynı Worker örneği içinde)
 
 function cors(req, env) {
   const izinli = (env.IZINLI_ADRESLER || 'http://127.0.0.1:8791,null').split(',').map(s => s.trim());
@@ -35,11 +36,22 @@ function cors(req, env) {
   return {
     'Access-Control-Allow-Origin': izinli.includes(o) || izinli.includes('*') ? o : izinli[0],
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-FilmX-Anahtar',
+    'Access-Control-Allow-Headers': 'Content-Type',
     'Vary': 'Origin',
   };
 }
 const json = (veri, durum, h) => new Response(JSON.stringify(veri), { status: durum, headers: { 'Content-Type': 'application/json; charset=utf-8', ...h } });
+
+// günlük toplam sınır: filmx-db (D1) içinde gün gün sayılır
+async function gunlukSinirAsildi(env) {
+  if (!env.filmx_db) return false;
+  const gun = new Date().toISOString().slice(0, 10);
+  try {
+    await env.filmx_db.prepare('CREATE TABLE IF NOT EXISTS sayac (gun TEXT PRIMARY KEY, adet INTEGER NOT NULL)').run();
+    const r = await env.filmx_db.prepare('INSERT INTO sayac (gun, adet) VALUES (?, 1) ON CONFLICT(gun) DO UPDATE SET adet = adet + 1 RETURNING adet').bind(gun).first();
+    return (r && r.adet) > GUNLUK_SINIR;
+  } catch (e) { return false; }
+}
 
 function sinirAsildi(ip) {
   const simdi = Date.now(), l = (sayac.get(ip) || []).filter(t => simdi - t < 60000);
@@ -101,7 +113,10 @@ export default {
     const h = cors(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { headers: h });
     if (req.method !== 'POST') return json({ hata: 'Sadece POST' }, 405, h);
-    if (env.ERISIM_ANAHTARI && req.headers.get('X-FilmX-Anahtar') !== env.ERISIM_ANAHTARI) return json({ hata: 'yetkisiz' }, 401, h);
+    // erişim: anahtar sayfada tutulmaz; sadece izinli adreslerden gelen istekler kabul edilir
+    const izinli = (env.IZINLI_ADRESLER || '').split(',').map(x => x.trim());
+    if (!izinli.includes(req.headers.get('Origin') || 'null')) return json({ hata: 'yetkisiz' }, 403, h);
+    if (await gunlukSinirAsildi(env)) return json({ cevap: 'Bugünlük soru hakkım doldu 🙂 Yarın tekrar konuşalım!', oneriler: [], kategori: '' }, 200, h);
 
     const ip = req.headers.get('CF-Connecting-IP') || 'yerel';
     if (sinirAsildi(ip)) return json({ cevap: 'Biraz hızlı gidiyoruz 🙂 Bir dakika sonra tekrar sorar mısın?', oneriler: [], kategori: '' }, 200, h);

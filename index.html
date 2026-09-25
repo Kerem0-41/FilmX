@@ -1187,7 +1187,7 @@ function goHome(){closeDetail();if(secTitle)selectCat('hepsi','Film',catsEl&&cat
 
 /* ================= FİLM ROBOTU: yapay zekâ sohbeti + katalogdaki filmlere kısayol ================= */
 // Arka uç (Cloudflare Worker) adresi yayına alınınca buraya yazılır; istenirse localStorage 'filmx_robot_url' ile değiştirilebilir.
-const ROBOT={URL:"https://filmx-robot.chatbox-tk.workers.dev/",ANAHTAR:"34defb0109941b29be9d60971698d4167c40faa8b5d01868",
+const ROBOT={URL:"https://filmx-robot.chatbox-tk.workers.dev/",
   KAT_AD:{aksiyon:'Aksiyon',komedi:'Komedi',korku:'Korku',gerilim:'Gerilim',bilimkurgu:'Bilim Kurgu',animasyon:'Animasyon',dram:'Dram',romantik:'Romantik',
     fantastik:'Fantastik',suc:'Suç',savas:'Savaş',belgesel:'Belgesel',marvel:'Marvel',dizi:'Diziler'},
   gecmis:[],bekliyor:false,
@@ -1228,7 +1228,7 @@ const ROBOT={URL:"https://filmx-robot.chatbox-tk.workers.dev/",ANAHTAR:"34defb01
     ROBOT.gecmis.push({rol:'kisi',metin:soru});ROBOT.bekliyor=true;ROBOT.ciz();
     let cevap;
     try{const u=ROBOT.adres();if(!u||u.indexOf('__')===0)throw new Error('adres yok');
-      const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json','X-FilmX-Anahtar':ROBOT.ANAHTAR},body:JSON.stringify({soru,gecmis:onceki})});
+      const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({soru,gecmis:onceki})});
       cevap=await r.json();if(!r.ok&&!cevap.cevap)throw new Error(cevap.hata||r.status)}
     catch(e){cevap={cevap:(''+e.message).indexOf('adres yok')>=0?'Film Robotu henüz yayında değil. Arka uç Cloudflare\'e yüklenince burada cevap vereceğim.':'Şu an bağlanamadım, birazdan tekrar dener misin?',oneriler:[],kategori:''}}
     ROBOT.bekliyor=false;ROBOT.gecmis.push({rol:'robot',metin:cevap.cevap||'',oneriler:cevap.oneriler||[],kategori:cevap.kategori||''});ROBOT.kaydet();ROBOT.ciz()},
@@ -1304,7 +1304,7 @@ const OZEL={
     if(t==='dizi')document.getElementById('ozEp').value=k.ep+1;  // sıradaki bölüme hazır
     if(secTitle&&!isSearch)selectCat(secTitle.dataset.cat||'hepsi',secTitle.textContent,document.querySelector('.cat.active'))},
   async bilgi(ad,tur,yil){try{const u=ROBOT.adres();if(!u||u.indexOf('__')===0)return null;
-      const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json','X-FilmX-Anahtar':ROBOT.ANAHTAR},body:JSON.stringify({islem:'bilgi',ad,tur,yil})});
+      const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({islem:'bilgi',ad,tur,yil})});
       return r.ok?await r.json():null}catch(e){return null}},
   sil(id){const liste=OZEL.oku().filter(x=>x.id!==id);OZEL.yaz(liste);OZEL.uygula();OZEL.listeCiz()},
   listeCiz(){const l=OZEL.oku().slice().reverse();const el=document.getElementById('ozListe');if(!el)return;
