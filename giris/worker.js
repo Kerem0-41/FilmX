@@ -74,20 +74,22 @@ const sinirSifirla = (db, anahtar) => db.prepare('DELETE FROM g_deneme WHERE ana
 
 const temizCihaz = c => String(c || '').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 64) || null;
 const temizMetin = (s, n) => String(s || '').replace(/[\u0000-\u001f]/g, '').slice(0, n);
-function cihazAdi(ua) {
+// dok: sayfa dokunmatik ekran bildirdi (iPad Safari kendini Mac olarak tanıtır)
+function cihazAdi(ua, dok) {
   ua = ua || '';
+  if (dok && /Mac OS X/.test(ua) && !/iPhone|iPad/.test(ua)) ua = ua.replace('Macintosh', 'iPad').replace('Mac OS X', 'iPad OS');
   const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Bilinmeyen';
   const tr = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /SamsungBrowser/.test(ua) ? 'Samsung' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Tarayıcı';
   return os + ' · ' + tr;
 }
 const disaAc = k => ({ id: k.id, ad: k.ad, rol: k.rol, durum: k.durum, ...(k.kurucu ? { kurucu: true } : {}) });   // kurucu bilgisi sadece kendi hesabına döner
 
-async function oturumAc(db, k, cihaz, ua) {
+async function oturumAc(db, k, cihaz, ua, dok) {
   const token = b64(rastgele(32)).replace(/[+/=]/g, c => ({ '+': '-', '/': '_', '=': '' }[c]));
   const t = now();
   await db.batch([
     db.prepare('INSERT INTO g_oturum (ozet, kullanici_id, cihaz, olusturma, bitis) VALUES (?, ?, ?, ?, ?)').bind(await sha256(token), k.id, cihaz, t, t + OTURUM_GUN * 86400),
-    db.prepare('INSERT INTO g_giris (kullanici_id, cihaz, cihaz_ad, zaman) VALUES (?, ?, ?, ?)').bind(k.id, cihaz, cihazAdi(ua), t),
+    db.prepare('INSERT INTO g_giris (kullanici_id, cihaz, cihaz_ad, zaman) VALUES (?, ?, ?, ?)').bind(k.id, cihaz, cihazAdi(ua, dok), t),
     db.prepare('DELETE FROM g_oturum WHERE bitis < ?').bind(t),
   ]);
   return token;
@@ -115,7 +117,7 @@ async function kayit(req, env, db, v) {
   const tuz = hex(rastgele(16)), ozet = await sifreOzet(sifre, tuz);
   const r = await db.prepare(`INSERT INTO g_kullanici (ad, tuz, ozet, rol, durum, olusturma) VALUES (?, ?, ?, 'musteri', 'bekliyor', ?) ON CONFLICT(ad) DO NOTHING RETURNING *`).bind(ad, tuz, ozet, now()).first();
   if (!r) throw new Hata(409, 'Bu kullanıcı adı alınmış. Başka bir ad seçin.');
-  const token = await oturumAc(db, r, temizCihaz(v.cihaz), req.headers.get('User-Agent'));
+  const token = await oturumAc(db, r, temizCihaz(v.cihaz), req.headers.get('User-Agent'), v.dok === true);
   return { token, kullanici: disaAc(r) };
 }
 
@@ -133,7 +135,7 @@ async function giris(req, env, db, v) {
   }
   for (const a of anahtarlar) await sinirSifirla(db, a);
   if (k.durum === 'reddedildi') throw new Hata(403, 'Bu hesabın başvurusu kabul edilmedi.');
-  const token = await oturumAc(db, k, temizCihaz(v.cihaz), req.headers.get('User-Agent'));
+  const token = await oturumAc(db, k, temizCihaz(v.cihaz), req.headers.get('User-Agent'), v.dok === true);
   return { token, kullanici: disaAc(k) };
 }
 
@@ -174,7 +176,7 @@ async function ziyaret(req, env, db, v) {
   const c = temizCihaz(v.cihaz); if (!c) return { tamam: true };
   const t = now();
   await db.prepare('INSERT INTO g_cihaz (cihaz, cihaz_ad, ilk, son, ziyaret) VALUES (?, ?, ?, ?, 1) ON CONFLICT(cihaz) DO UPDATE SET son=excluded.son, cihaz_ad=excluded.cihaz_ad, ziyaret=ziyaret+1')
-    .bind(c, cihazAdi(req.headers.get('User-Agent')), t, t).run();
+    .bind(c, cihazAdi(req.headers.get('User-Agent'), v.dok === true), t, t).run();
   return { tamam: true };
 }
 
