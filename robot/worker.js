@@ -36,7 +36,7 @@ function cors(req, env) {
   return {
     'Access-Control-Allow-Origin': izinli.includes(o) || izinli.includes('*') ? o : izinli[0],
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Vary': 'Origin',
   };
 }
@@ -108,21 +108,55 @@ async function bilgiBul(g) {
   } catch (e) { return { bulundu: false }; }
 }
 
+// ---------- Giriş (tek yönetici hesabı) ----------
+const b64u = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+async function hmac(anahtar, veri) { const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(anahtar), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); return b64u(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(veri))); }
+async function sifreDogru(sifre, kayit) {   // kayit = "tuz:hash" (PBKDF2-SHA256, 100000 tur)
+  const [tuz, beklenen] = String(kayit || "").split(":"); if (!tuz || !beklenen) return false;
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(sifre), "PBKDF2", false, ["deriveBits"]);
+  const bit = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: new TextEncoder().encode(tuz), iterations: 100000, hash: "SHA-256" }, k, 256);
+  const h = hex(bit); let fark = h.length ^ beklenen.length; for (let i = 0; i < h.length; i++) fark |= h.charCodeAt(i) ^ (beklenen.charCodeAt(i) || 0); return fark === 0;
+}
+async function oturumVer(env) { const yuk = b64u(new TextEncoder().encode(JSON.stringify({ r: "admin", exp: Date.now() + 30 * 864e5 }))); return yuk + "." + await hmac(env.OTURUM_ANAHTARI, yuk); }
+async function oturumDogru(env, token) {
+  const [yuk, imza] = String(token || "").split("."); if (!yuk || !imza || !env.OTURUM_ANAHTARI) return false;
+  if (await hmac(env.OTURUM_ANAHTARI, yuk) !== imza) return false;
+  try { const v = JSON.parse(atob(yuk.replace(/-/g, "+").replace(/_/g, "/"))); return v.exp > Date.now(); } catch (e) { return false; }
+}
+async function denemeFazla(env, ip, yanlis) {   // 15 dk içinde 8 yanlış deneme -> kilit
+  if (!env.filmx_db) return false;
+  await env.filmx_db.prepare("CREATE TABLE IF NOT EXISTS giris_deneme (ip TEXT, zaman INTEGER)").run();
+  const sinir = Date.now() - 15 * 60000;
+  if (yanlis) await env.filmx_db.prepare("INSERT INTO giris_deneme (ip, zaman) VALUES (?, ?)").bind(ip, Date.now()).run();
+  const r = await env.filmx_db.prepare("SELECT COUNT(*) AS n FROM giris_deneme WHERE ip = ? AND zaman > ?").bind(ip, sinir).first();
+  return (r && r.n) >= 8;
+}
+
 export default {
   async fetch(req, env, ctx) {
     const h = cors(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { headers: h });
     if (req.method !== 'POST') return json({ hata: 'Sadece POST' }, 405, h);
-    // erişim: anahtar sayfada tutulmaz; sadece izinli adreslerden gelen istekler kabul edilir
-    const izinli = (env.IZINLI_ADRESLER || '').split(',').map(x => x.trim());
-    if (!izinli.includes('*') && !izinli.includes(req.headers.get('Origin') || 'null')) return json({ hata: 'yetkisiz' }, 403, h);
-    if (await gunlukSinirAsildi(env)) return json({ cevap: 'Bugünlük soru hakkım doldu 🙂 Yarın tekrar konuşalım!', oneriler: [], kategori: '' }, 200, h);
+    if (false && await gunlukSinirAsildi(env)) return json({ cevap: 'Bugünlük soru hakkım doldu 🙂 Yarın tekrar konuşalım!', oneriler: [], kategori: '' }, 200, h);
 
     const ip = req.headers.get('CF-Connecting-IP') || 'yerel';
     if (sinirAsildi(ip)) return json({ cevap: 'Biraz hızlı gidiyoruz 🙂 Bir dakika sonra tekrar sorar mısın?', oneriler: [], kategori: '' }, 200, h);
 
     let g; try { g = await req.json(); } catch (e) { return json({ hata: 'geçersiz istek' }, 400, h); }
+    const ipAdr = req.headers.get('CF-Connecting-IP') || 'yerel';
+    if (g.islem === 'giris') {
+      if (await denemeFazla(env, ipAdr, false)) return json({ ok: false, hata: 'Çok fazla deneme. 15 dakika sonra tekrar deneyin.' }, 429, h);
+      const dogru = String(g.kullanici || '') === env.ADMIN_KULLANICI && await sifreDogru(String(g.sifre || ''), env.ADMIN_SIFRE);
+      if (!dogru) { await denemeFazla(env, ipAdr, true); return json({ ok: false, hata: 'Kullanıcı adı veya şifre yanlış.' }, 401, h); }
+      return json({ ok: true, token: await oturumVer(env) }, 200, h);
+    }
+    const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+    // oturum zorunluluğu şimdilik kapalı (sayfada giriş ekranı yok); GIRIS_ZORUNLU tanımlanırsa açılır
+    if (env.GIRIS_ZORUNLU && !(await oturumDogru(env, token))) return json({ ok: false, hata: 'oturum gerekli' }, 401, h);
+    if (g.islem === 'oturum') return json({ ok: true }, 200, h);
     if (g.islem === 'bilgi') return json(await bilgiBul(g), 200, h);
+    if (g.islem !== 'bilgi' && await gunlukSinirAsildi(env)) return json({ cevap: 'Bugünlük soru hakkım doldu 🙂 Yarın tekrar konuşalım!', oneriler: [], kategori: '' }, 200, h);
     const soru = String(g.soru || '').trim().slice(0, 600);
     if (!soru) return json({ hata: 'soru boş' }, 400, h);
     const gecmis = (Array.isArray(g.gecmis) ? g.gecmis : []).slice(-GECMIS_MESAJ)

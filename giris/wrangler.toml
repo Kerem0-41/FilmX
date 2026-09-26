@@ -1,0 +1,16 @@
+name = "filmx-giris"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+account_id = "c4a200546619470faca234621495e5ac"   # turkmenkerem289 hesabı (chatbox-wake'e dokunulmaz)
+workers_dev = true
+
+# Giriş isteklerine izin verilen sayfa adresleri (virgülle). "null" = masaüstünden açılan index.html
+[vars]
+IZINLI_ADRESLER = "http://127.0.0.1:8791,http://localhost:8791,https://kerem0-41.github.io,null"
+
+# Gizli değişken (dosyaya YAZILMAZ): ICERIK_ANAHTARI — katalog şifre anahtarı, yerelde .icerik_anahtari (gitignore'da)
+
+[[d1_databases]]
+binding = "filmx_db"
+database_name = "filmx-db"
+database_id = "e3ead196-2a24-48b9-a9f7-677c7f38e88c"
