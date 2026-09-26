@@ -80,7 +80,7 @@ function cihazAdi(ua) {
   const tr = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /SamsungBrowser/.test(ua) ? 'Samsung' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Tarayıcı';
   return os + ' · ' + tr;
 }
-const disaAc = k => ({ id: k.id, ad: k.ad, rol: k.rol, durum: k.durum });
+const disaAc = k => ({ id: k.id, ad: k.ad, rol: k.rol, durum: k.durum, ...(k.kurucu ? { kurucu: true } : {}) });   // kurucu bilgisi sadece kendi hesabına döner
 
 async function oturumAc(db, k, cihaz, ua) {
   const token = b64(rastgele(32)).replace(/[+/=]/g, c => ({ '+': '-', '/': '_', '=': '' }[c]));
@@ -186,6 +186,7 @@ async function ozelOku(req, env, db) {
 }
 async function ozelYaz(req, env, db, v) {
   const k = await kimlik(req, db); yonetici(k);
+  if (!k.kurucu) throw new Hata(403, 'Yetkiniz yok.');   // Link Ekle yalnız kurucu hesapta
   if (!Array.isArray(v.liste)) throw new Hata(400, 'Liste gerekli.');
   const veri = JSON.stringify(v.liste);
   if (veri.length > 900000) throw new Hata(413, 'Liste çok büyük.');
