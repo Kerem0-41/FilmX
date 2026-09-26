@@ -115,7 +115,7 @@ export default {
     if (req.method !== 'POST') return json({ hata: 'Sadece POST' }, 405, h);
     // erişim: anahtar sayfada tutulmaz; sadece izinli adreslerden gelen istekler kabul edilir
     const izinli = (env.IZINLI_ADRESLER || '').split(',').map(x => x.trim());
-    if (!izinli.includes(req.headers.get('Origin') || 'null')) return json({ hata: 'yetkisiz' }, 403, h);
+    if (!izinli.includes('*') && !izinli.includes(req.headers.get('Origin') || 'null')) return json({ hata: 'yetkisiz' }, 403, h);
     if (await gunlukSinirAsildi(env)) return json({ cevap: 'Bugünlük soru hakkım doldu 🙂 Yarın tekrar konuşalım!', oneriler: [], kategori: '' }, 200, h);
 
     const ip = req.headers.get('CF-Connecting-IP') || 'yerel';
