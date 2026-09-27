@@ -1,0 +1,9 @@
+# derlemede kopyalanan site dosyalari ve derleme ciktilari
+app/src/main/assets/site/
+.gradle/
+build/
+app/build/
+*.apk
+# imza anahtarı ve şifresi: ASLA gönderilmez, ayrıca yedeklenmeli
+imza/
+app/src/main/assets/guncelleme.txt

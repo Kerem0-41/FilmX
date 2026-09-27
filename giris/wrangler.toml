@@ -6,7 +6,7 @@ workers_dev = true
 
 # Giriş isteklerine izin verilen sayfa adresleri (virgülle). "null" = masaüstünden açılan index.html
 [vars]
-IZINLI_ADRESLER = "http://127.0.0.1:8791,http://localhost:8791,https://kerem0-41.github.io,null"
+IZINLI_ADRESLER = "http://127.0.0.1:8791,http://localhost:8791,https://kerem0-41.github.io,https://appassets.androidplatform.net,null"   # appassets: FilmX APK
 
 # Gizli değişken (dosyaya YAZILMAZ): ICERIK_ANAHTARI — katalog şifre anahtarı, yerelde .icerik_anahtari (gitignore'da)
 

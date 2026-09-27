@@ -2,6 +2,14 @@ plugins {
     id 'com.android.application'
 }
 
+// sürüm: ../surum.properties (derle.py yayinla her seferinde kod'u 1 artırır)
+def surum = new Properties()
+file("../surum.properties").withInputStream { surum.load(it) }
+// kalıcı imza anahtarı: ../imza/ (gitignore'da; kaybolursa kimse güncelleme alamaz, yedekle)
+def imza = new Properties()
+def imzaDosya = file("../imza/imza.properties")
+if (imzaDosya.exists()) imzaDosya.withInputStream { imza.load(it) }
+
 android {
     namespace 'com.filmx.player'
     compileSdk 35
@@ -10,14 +18,25 @@ android {
         applicationId "com.filmx.player"
         minSdk 24
         targetSdk 35
-        versionCode 1
-        versionName "1.0"
+        versionCode surum['kod'] as int
+        versionName surum['ad']
+    }
+
+    signingConfigs {
+        kalici {
+            if (imzaDosya.exists()) {
+                storeFile file("../" + imza['storeFile'])
+                storePassword imza['storePassword']
+                keyAlias imza['keyAlias']
+                keyPassword imza['keyPassword']
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig imzaDosya.exists() ? signingConfigs.kalici : signingConfigs.debug
         }
     }
 
@@ -28,4 +47,9 @@ android {
 }
 
 dependencies {
+    // WebViewAssetLoader: site dosyalari https adresinden sunulur (YouTube file:// sayfada oynamaz)
+    // addDocumentStartJavaScript: reklam betigi YouTube'un kendi betiklerinden ONCE calisir
+    implementation 'androidx.webkit:webkit:1.12.1'
+    // FileProvider: indirilen guncelleme APK'sini Android yukleyicisine vermek icin
+    implementation 'androidx.core:core:1.13.1'
 }

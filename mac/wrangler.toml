@@ -1,0 +1,12 @@
+name = "filmx-mac"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+account_id = "c4a200546619470faca234621495e5ac"   # turkmenkerem289 hesabı (chatbox-wake'e dokunulmaz)
+workers_dev = true
+
+[vars]
+# Maç listesine izin verilen sayfa adresleri (virgülle). "null" = masaüstünden açılan index.html
+IZINLI_ADRESLER = "http://127.0.0.1:8791,http://localhost:8791,https://appassets.androidplatform.net,null"   # appassets: FilmX APK
+# Maç sitesinin adresi. Site alan adını değiştirince buraya yenisini yaz (virgülle birden fazla, sırayla denenir)
+# ve `npx wrangler deploy` ile yeniden yayınla.
+SITE_ADRESLERI = "https://www.selcuksportshdbd813bd00f.xyz/"
