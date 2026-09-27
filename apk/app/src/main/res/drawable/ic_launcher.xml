@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Android 7 (uyarlanabilir simge öncesi) için: köşesiz koyu zemin + animasyondaki X -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item><shape android:shape="rectangle"><solid android:color="#0B0D13" /></shape></item>
-    <item android:drawable="@drawable/ic_launcher_x" />
-</layer-list>

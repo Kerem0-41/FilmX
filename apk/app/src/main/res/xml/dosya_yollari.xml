@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- indirilen güncelleme APK'sı (cache/guncelleme/) Android yükleyicisine buradan verilir -->
-<paths>
-    <cache-path name="guncelleme" path="guncelleme/" />
-</paths>
