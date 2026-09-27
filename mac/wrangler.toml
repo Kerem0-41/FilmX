@@ -6,7 +6,7 @@ workers_dev = true
 
 [vars]
 # Maç listesine izin verilen sayfa adresleri (virgülle). "null" = masaüstünden açılan index.html
-IZINLI_ADRESLER = "http://127.0.0.1:8791,http://localhost:8791,https://appassets.androidplatform.net,null"   # appassets: FilmX APK
+IZINLI_ADRESLER = "http://127.0.0.1:8791,http://localhost:8791,https://kerem0-41.github.io,https://appassets.androidplatform.net,null"   # appassets: FilmX APK
 # Maç sitesinin adresi. Site alan adını değiştirince buraya yenisini yaz (virgülle birden fazla, sırayla denenir)
 # ve `npx wrangler deploy` ile yeniden yayınla.
 SITE_ADRESLERI = "https://www.selcuksportshdbd813bd00f.xyz/"
