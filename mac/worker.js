@@ -38,6 +38,8 @@ function dizi(js, ad) {
     .replace(/,\s*([}\]])/g, '$1');
   try { return JSON.parse(govde); } catch (e) { return []; }
 }
+// lig/başlıktan spor türü (karsilasmalar dizisinde tür alanı yok)
+const sporBul = t => /basket|nba|euroleague|eurocup|\bacb\b|\bbsl\b/i.test(t) ? 'basketbol' : /volley|voleybol|\bcev\b/i.test(t) ? 'voleybol' : /\batp\b|\bwta\b|\bitf\b|tenis|tennis/i.test(t) ? 'tenis' : /\bgp\b|formula|\bf1\b|motogp|grand prix/i.test(t) ? 'diger' : 'futbol';
 const kimlik = u => { const m = String(u || '').match(/[?&]id=([\w-]{2,80})/); return m ? m[1] : ''; };
 
 async function listeGetir(env) {
@@ -50,9 +52,14 @@ async function listeGetir(env) {
   if (!lr.ok) throw new Error('liste -> HTTP ' + lr.status);
   const js = await lr.text(), oh = or.ok ? await or.text() : '';
   const tabanlar = [...new Set([...oh.matchAll(/"(https:\/\/[^"\s]+\/checklist\/)"/g)].map(m => m[1]))];
-  const maclar = [];
+  const maclar = [], gorulen = new Set();
+  // 'karsilasmalar': sitenin öne çıkan maçları — asıl yayın kimlikleri burada (spor dizilerindeki aynı maç çoğu zaman kapalı 'Feed' kopyası)
+  for (const x of dizi(js, 'karsilasmalar')) {
+    const id = kimlik(x.url); if (!id || gorulen.has(id)) continue; gorulen.add(id);
+    maclar.push({ saat: String(x.time || ''), lig: String(x.league || ''), ad: String(x.title || ''), id, canli: !!x.live, spor: sporBul(x.league + ' ' + x.title) });
+  }
   for (const [ad, spor] of Object.entries(SPORLAR)) for (const x of dizi(js, ad)) {
-    const id = kimlik(x.url); if (!id) continue;
+    const id = kimlik(x.url); if (!id || gorulen.has(id)) continue; gorulen.add(id);
     maclar.push({ saat: String(x.time || ''), lig: String(x.league || ''), ad: String(x.title || ''), id, canli: !!x.live, spor });
   }
   const kanallar = dizi(js, 'channels').map(x => ({ ad: String(x.title || ''), id: kimlik(x.url) })).filter(x => x.id && x.ad);

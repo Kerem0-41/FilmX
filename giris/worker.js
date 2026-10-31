@@ -57,7 +57,12 @@ async function kur(db) {
     db.prepare(`CREATE INDEX IF NOT EXISTS g_giris_c ON g_giris(cihaz)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS g_izleme_k ON g_izleme(kullanici_id, bitis)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS g_oturum_k ON g_oturum(kullanici_id)`),
+    // hesap başına izinli cihazlar: durum bekliyor | aktif | reddedildi
+    db.prepare(`CREATE TABLE IF NOT EXISTS g_cihaz_izin (kullanici_id INTEGER NOT NULL, cihaz TEXT NOT NULL, cihaz_ad TEXT, durum TEXT NOT NULL DEFAULT 'bekliyor', istek INTEGER NOT NULL, PRIMARY KEY (kullanici_id, cihaz))`),
   ]);
+  // geçiş: bu özellikten önce girilmiş cihazlar onaylı sayılır (sadece tablo boşken çalışır)
+  await db.prepare(`INSERT OR IGNORE INTO g_cihaz_izin (kullanici_id, cihaz, cihaz_ad, durum, istek)
+    SELECT kullanici_id, cihaz, MAX(cihaz_ad), 'aktif', MIN(zaman) FROM g_giris WHERE cihaz IS NOT NULL AND (SELECT COUNT(*) FROM g_cihaz_izin) = 0 GROUP BY kullanici_id, cihaz`).run();
   kuruldu = true;
 }
 
@@ -99,12 +104,29 @@ async function kimlik(req, db) {
   const h = req.headers.get('Authorization') || '';
   const token = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
   if (!token || token.length > 100) throw new Hata(401, 'Oturum yok.');
-  const k = await db.prepare(`SELECT k.* FROM g_oturum o JOIN g_kullanici k ON k.id = o.kullanici_id WHERE o.ozet = ? AND o.bitis > ?`).bind(await sha256(token), now()).first();
+  const k = await db.prepare(`SELECT k.*, o.cihaz AS _cihaz, (SELECT c.durum FROM g_cihaz_izin c WHERE c.kullanici_id = k.id AND c.cihaz = o.cihaz) AS _cihaz_durum
+    FROM g_oturum o JOIN g_kullanici k ON k.id = o.kullanici_id WHERE o.ozet = ? AND o.bitis > ?`).bind(await sha256(token), now()).first();
   if (!k) throw new Hata(401, 'Oturumun süresi doldu. Tekrar giriş yapın.');
   k._token = token;
   return k;
 }
-const girebilir = k => k.durum === 'aktif';
+// hesap açık + bu cihaz onaylı (kurucu hesap cihaz onayından muaf)
+const cihazOnayli = k => !!k.kurucu || k._cihaz_durum === 'aktif';
+const girebilir = k => k.durum === 'aktif' && cihazOnayli(k);
+// sayfaya giden durum: hesap açık ama cihaz onaysızsa "bekliyor" (cihaz: true ile), cihaz reddedildiyse "reddedildi"
+function durumDis(k) {
+  const d = disaAc(k);
+  if (k.durum === 'aktif' && !cihazOnayli(k)) { d.durum = k._cihaz_durum === 'reddedildi' ? 'reddedildi' : 'bekliyor'; d.cihaz = true; }
+  return d;
+}
+// bu cihaz için izin kaydı (yoksa oluşturur) ve durumunu döner
+async function cihazIzin(db, k, cihaz, ua, dok, durum) {
+  if (!cihaz) return null;
+  await db.prepare('INSERT INTO g_cihaz_izin (kullanici_id, cihaz, cihaz_ad, durum, istek) VALUES (?, ?, ?, ?, ?) ON CONFLICT(kullanici_id, cihaz) DO NOTHING')
+    .bind(k.id, cihaz, cihazAdi(ua, dok), durum, now()).run();
+  const r = await db.prepare('SELECT durum FROM g_cihaz_izin WHERE kullanici_id=? AND cihaz=?').bind(k.id, cihaz).first();
+  return r ? r.durum : null;
+}
 function yonetici(k) { if (!(girebilir(k) && k.rol === 'admin')) throw new Hata(403, 'Yetkiniz yok.'); }
 
 // ---------------- uçlar ----------------
@@ -117,8 +139,10 @@ async function kayit(req, env, db, v) {
   const tuz = hex(rastgele(16)), ozet = await sifreOzet(sifre, tuz);
   const r = await db.prepare(`INSERT INTO g_kullanici (ad, tuz, ozet, rol, durum, olusturma) VALUES (?, ?, ?, 'musteri', 'bekliyor', ?) ON CONFLICT(ad) DO NOTHING RETURNING *`).bind(ad, tuz, ozet, now()).first();
   if (!r) throw new Hata(409, 'Bu kullanıcı adı alınmış. Başka bir ad seçin.');
-  const token = await oturumAc(db, r, temizCihaz(v.cihaz), req.headers.get('User-Agent'), v.dok === true);
-  return { token, kullanici: disaAc(r) };
+  const cihaz = temizCihaz(v.cihaz), ua = req.headers.get('User-Agent');
+  r._cihaz_durum = await cihazIzin(db, r, cihaz, ua, v.dok === true, 'aktif');
+  const token = await oturumAc(db, r, cihaz, ua, v.dok === true);
+  return { token, kullanici: durumDis(r) };
 }
 
 async function giris(req, env, db, v) {
@@ -135,14 +159,17 @@ async function giris(req, env, db, v) {
   }
   for (const a of anahtarlar) await sinirSifirla(db, a);
   if (k.durum === 'reddedildi') throw new Hata(403, 'Bu hesabın başvurusu kabul edilmedi.');
-  const token = await oturumAc(db, k, temizCihaz(v.cihaz), req.headers.get('User-Agent'), v.dok === true);
-  return { token, kullanici: disaAc(k) };
+  const cihaz = temizCihaz(v.cihaz), ua = req.headers.get('User-Agent');
+  k._cihaz_durum = await cihazIzin(db, k, cihaz, ua, v.dok === true, k.kurucu ? 'aktif' : 'bekliyor');
+  if (!k.kurucu && k._cihaz_durum === 'reddedildi') throw new Hata(403, 'Bu cihazdan bu hesaba giriş izni verilmedi.');
+  const token = await oturumAc(db, k, cihaz, ua, v.dok === true);
+  return { token, kullanici: durumDis(k) };
 }
 
 async function ben(req, env, db) {
   const k = await kimlik(req, db);
   await db.prepare('UPDATE g_kullanici SET son_gorulme=? WHERE id=?').bind(now(), k.id).run();
-  const cevap = { kullanici: disaAc(k) };
+  const cevap = { kullanici: durumDis(k) };
   if (girebilir(k)) cevap.anahtar = env.ICERIK_ANAHTARI;   // katalog çözme anahtarı: yalnız onaylı + açık hesaba
   return cevap;
 }
@@ -168,7 +195,7 @@ async function nabiz(req, env, db, v) {
                 : db.prepare('INSERT INTO g_izleme (kullanici_id, slug, ad, baslangic, bitis) VALUES (?, ?, ?, ?, ?)').bind(k.id, iz.s, iz.t, t, t));
   }
   await db.batch(is);
-  return { kullanici: disaAc(k) };
+  return { kullanici: durumDis(k) };
 }
 
 // sayfa ziyareti (giriş yapmadan da sayılır): cihaz sayımı için
@@ -207,7 +234,7 @@ async function yOzet(req, env, db) {
       (SELECT COUNT(*) FROM g_izleme i WHERE i.kullanici_id=k.id) AS izleme_sayisi,
       (SELECT COALESCE(SUM(i.bitis - i.baslangic),0) FROM g_izleme i WHERE i.kullanici_id=k.id) AS izleme_sn
     FROM g_kullanici k WHERE k.kurucu=0 ORDER BY k.olusturma DESC`).all()).results.map(u => {
-      const cevrimici = !!(u.son_gorulme && t - u.son_gorulme < CEVRIMICI_SN);
+      const cevrimici = !!(u.son_gorulme && t - u.son_gorulme < CEVRIMICI_SN) && u.durum !== 'reddedildi' && u.durum !== 'kapali';
       let simdi = null; if (cevrimici && u.simdi && u.simdi_zaman && t - u.simdi_zaman < CEVRIMICI_SN) try { simdi = JSON.parse(u.simdi); } catch (e) {}
       return { ...u, simdi, simdi_zaman: undefined, cevrimici };
     });
@@ -219,7 +246,10 @@ async function yOzet(req, env, db) {
       (SELECT GROUP_CONCAT(ad, ', ') FROM (SELECT DISTINCT k.ad FROM g_giris g JOIN g_kullanici k ON k.id=g.kullanici_id WHERE g.cihaz=c.cihaz ${gizli})) AS kisiler
     FROM g_cihaz c WHERE c.cihaz NOT IN (SELECT DISTINCT g.cihaz FROM g_giris g WHERE g.cihaz IS NOT NULL AND g.kullanici_id IN (SELECT id FROM g_kullanici WHERE kurucu=1))
     ORDER BY c.son DESC LIMIT 300`).bind(...kurucuId, ...kurucuId, ...kurucuId).all()).results;
-  return { kullanicilar, cihazlar, simdi: t };
+  const cihazIstekleri = (await db.prepare(`SELECT c.kullanici_id, k.ad, c.cihaz, c.cihaz_ad, c.istek,
+      (SELECT COUNT(*) FROM g_cihaz_izin x WHERE x.kullanici_id = c.kullanici_id AND x.durum = 'aktif') AS onayli_cihaz
+    FROM g_cihaz_izin c JOIN g_kullanici k ON k.id = c.kullanici_id WHERE c.durum = 'bekliyor' AND k.kurucu = 0 AND k.durum = 'aktif' ORDER BY c.istek DESC LIMIT 200`).all()).results;
+  return { kullanicilar, cihazlar, cihazIstekleri, simdi: t };
 }
 
 async function yKullanici(req, env, db, v) {
@@ -229,7 +259,8 @@ async function yKullanici(req, env, db, v) {
   if (!u) throw new Hata(404, 'Kullanıcı bulunamadı.');
   const izlemeler = (await db.prepare('SELECT slug, ad, baslangic, bitis FROM g_izleme WHERE kullanici_id=? ORDER BY bitis DESC LIMIT 200').bind(id).all()).results;
   const girisler = (await db.prepare('SELECT cihaz, cihaz_ad, zaman FROM g_giris WHERE kullanici_id=? ORDER BY zaman DESC LIMIT 100').bind(id).all()).results;
-  return { kullanici: u, izlemeler, girisler };
+  const izinler = (await db.prepare('SELECT cihaz, cihaz_ad, durum, istek FROM g_cihaz_izin WHERE kullanici_id=? ORDER BY istek DESC').bind(id).all()).results;
+  return { kullanici: u, izlemeler, girisler, izinler };
 }
 
 async function yIslem(req, env, db, v) {
@@ -237,21 +268,27 @@ async function yIslem(req, env, db, v) {
   const id = +v.id, islem = String(v.islem || '');
   const u = await db.prepare('SELECT id, kurucu FROM g_kullanici WHERE id=?').bind(id).first();
   if (!u || u.kurucu) throw new Hata(404, 'Kullanıcı bulunamadı.');
-  if (u.id === k.id && islem !== 'rol') throw new Hata(400, 'Kendi hesabınızda bu işlem yapılamaz.');
+  if (u.id === k.id && islem !== 'rol' && islem !== 'cihaz_onayla') throw new Hata(400, 'Kendi hesabınızda bu işlem yapılamaz.');
   const oturumSil = db.prepare('DELETE FROM g_oturum WHERE kullanici_id=?').bind(id);
   switch (islem) {
     case 'onayla': case 'ac':
       await db.prepare("UPDATE g_kullanici SET durum='aktif' WHERE id=?").bind(id).run(); break;
     case 'reddet':
-      await db.batch([db.prepare("UPDATE g_kullanici SET durum='reddedildi' WHERE id=?").bind(id), oturumSil]); break;
+      await db.batch([db.prepare("UPDATE g_kullanici SET durum='reddedildi', simdi=NULL, simdi_zaman=NULL, son_gorulme=? WHERE id=?").bind(now() - CEVRIMICI_SN, id), oturumSil]); break;
     case 'kapat':
-      await db.batch([db.prepare("UPDATE g_kullanici SET durum='kapali', simdi=NULL WHERE id=?").bind(id), oturumSil]); break;
+      await db.batch([db.prepare("UPDATE g_kullanici SET durum='kapali', simdi=NULL, simdi_zaman=NULL, son_gorulme=? WHERE id=?").bind(now() - CEVRIMICI_SN, id), oturumSil]); break;
+    case 'cihaz_onayla': case 'cihaz_reddet': {
+      const c = temizCihaz(v.cihaz); if (!c) throw new Hata(400, 'Cihaz gerekli.');
+      const yeni = islem === 'cihaz_onayla' ? 'aktif' : 'reddedildi';
+      const is = [db.prepare('UPDATE g_cihaz_izin SET durum=? WHERE kullanici_id=? AND cihaz=?').bind(yeni, id, c)];
+      if (yeni === 'reddedildi') is.push(db.prepare('DELETE FROM g_oturum WHERE kullanici_id=? AND cihaz=?').bind(id, c));
+      await db.batch(is); break; }
     case 'rol': {
       const rol = v.rol === 'admin' ? 'admin' : 'musteri';
       if (u.id === k.id) throw new Hata(400, 'Kendi yetkinizi değiştiremezsiniz.');
       await db.prepare('UPDATE g_kullanici SET rol=? WHERE id=?').bind(rol, id).run(); break; }
     case 'sil':
-      await db.batch([oturumSil, db.prepare('DELETE FROM g_giris WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_izleme WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_kullanici WHERE id=?').bind(id)]); break;
+      await db.batch([oturumSil, db.prepare('DELETE FROM g_giris WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_izleme WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_cihaz_izin WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_kullanici WHERE id=?').bind(id)]); break;
     default: throw new Hata(400, 'Bilinmeyen işlem.');
   }
   return { tamam: true };
