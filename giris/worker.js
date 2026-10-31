@@ -58,6 +58,8 @@ async function kur(db) {
     db.prepare(`CREATE INDEX IF NOT EXISTS g_izleme_k ON g_izleme(kullanici_id, bitis)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS g_oturum_k ON g_oturum(kullanici_id)`),
     // hesap başına izinli cihazlar: durum bekliyor | aktif | reddedildi
+    db.prepare(`CREATE TABLE IF NOT EXISTS g_soru (id INTEGER PRIMARY KEY AUTOINCREMENT, kullanici_id INTEGER NOT NULL, soru TEXT NOT NULL, cevap TEXT, zaman INTEGER NOT NULL)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS g_soru_z ON g_soru(zaman)`),
     db.prepare(`CREATE TABLE IF NOT EXISTS g_cihaz_izin (kullanici_id INTEGER NOT NULL, cihaz TEXT NOT NULL, cihaz_ad TEXT, durum TEXT NOT NULL DEFAULT 'bekliyor', istek INTEGER NOT NULL, PRIMARY KEY (kullanici_id, cihaz))`),
   ]);
   // geçiş: bu özellikten önce girilmiş cihazlar onaylı sayılır (sadece tablo boşken çalışır)
@@ -223,6 +225,17 @@ async function ozelYaz(req, env, db, v) {
   return { tamam: true };
 }
 
+// Film Robotu'na sorulan soru (sayfa, robota sorduktan sonra buraya da yazar). Kişi başı saatte en fazla 120.
+async function soruKaydet(req, env, db, v) {
+  const k = await kimlik(req, db); if (!girebilir(k)) throw new Hata(403, 'Hesabınız onay bekliyor.');
+  const soru = temizMetin(v.soru, 500).trim(); if (!soru) throw new Hata(400, 'Soru gerekli.');
+  const t = now();
+  const say = await db.prepare('SELECT COUNT(*) AS n FROM g_soru WHERE kullanici_id=? AND zaman > ?').bind(k.id, t - 3600).first();
+  if (say && say.n >= 120) return { tamam: false };
+  await db.prepare('INSERT INTO g_soru (kullanici_id, soru, cevap, zaman) VALUES (?, ?, ?, ?)').bind(k.id, soru, temizMetin(v.cevap, 600), t).run();
+  return { tamam: true };
+}
+
 // ---------------- yönetim ----------------
 // kurucu hesap hiçbir listede görünmez ve kimse (başka yöneticiler dahil) onu değiştiremez
 async function yOzet(req, env, db) {
@@ -249,7 +262,17 @@ async function yOzet(req, env, db) {
   const cihazIstekleri = (await db.prepare(`SELECT c.kullanici_id, k.ad, c.cihaz, c.cihaz_ad, c.istek,
       (SELECT COUNT(*) FROM g_cihaz_izin x WHERE x.kullanici_id = c.kullanici_id AND x.durum = 'aktif') AS onayli_cihaz
     FROM g_cihaz_izin c JOIN g_kullanici k ON k.id = c.kullanici_id WHERE c.durum = 'bekliyor' AND k.kurucu = 0 AND k.durum = 'aktif' ORDER BY c.istek DESC LIMIT 200`).all()).results;
-  return { kullanicilar, cihazlar, cihazIstekleri, simdi: t };
+  const soruSayisi = ((await db.prepare('SELECT COUNT(*) AS n FROM g_soru s JOIN g_kullanici k ON k.id = s.kullanici_id WHERE k.kurucu = 0').first()) || {}).n || 0;
+  return { kullanicilar, cihazlar, cihazIstekleri, soruSayisi, simdi: t };
+}
+
+// son sorulan sorular (kurucu hesabınkiler hariç); id verilirse sadece o kişinin
+async function ySorular(req, env, db, v) {
+  const k = await kimlik(req, db); yonetici(k);
+  const id = +v.id || 0;
+  const sorular = (await db.prepare(`SELECT s.id, s.kullanici_id, k.ad, s.soru, s.cevap, s.zaman FROM g_soru s JOIN g_kullanici k ON k.id = s.kullanici_id
+    WHERE k.kurucu = 0 ${id ? 'AND s.kullanici_id = ?' : ''} ORDER BY s.zaman DESC LIMIT 300`).bind(...(id ? [id] : [])).all()).results;
+  return { sorular };
 }
 
 async function yKullanici(req, env, db, v) {
@@ -288,7 +311,7 @@ async function yIslem(req, env, db, v) {
       if (u.id === k.id) throw new Hata(400, 'Kendi yetkinizi değiştiremezsiniz.');
       await db.prepare('UPDATE g_kullanici SET rol=? WHERE id=?').bind(rol, id).run(); break; }
     case 'sil':
-      await db.batch([oturumSil, db.prepare('DELETE FROM g_giris WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_izleme WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_cihaz_izin WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_kullanici WHERE id=?').bind(id)]); break;
+      await db.batch([oturumSil, db.prepare('DELETE FROM g_giris WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_izleme WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_cihaz_izin WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_soru WHERE kullanici_id=?').bind(id), db.prepare('DELETE FROM g_kullanici WHERE id=?').bind(id)]); break;
     default: throw new Hata(400, 'Bilinmeyen işlem.');
   }
   return { tamam: true };
@@ -297,6 +320,7 @@ async function yIslem(req, env, db, v) {
 const UCLAR = {
   'POST /kayit': kayit, 'POST /giris': giris, 'GET /ben': ben, 'POST /cikis': cikis, 'POST /nabiz': nabiz, 'POST /ziyaret': ziyaret,
   'GET /ozel': ozelOku, 'POST /ozel': ozelYaz,
+  'POST /soru': soruKaydet, 'POST /yonetim/sorular': ySorular,
   'GET /yonetim/ozet': yOzet, 'POST /yonetim/kullanici': yKullanici, 'POST /yonetim/islem': yIslem,
 };
 
