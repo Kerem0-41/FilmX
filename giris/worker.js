@@ -263,11 +263,33 @@ const UCLAR = {
   'GET /yonetim/ozet': yOzet, 'POST /yonetim/kullanici': yKullanici, 'POST /yonetim/islem': yIslem,
 };
 
+// dizi82 bölümü: oynatıcı adresi tıklanınca bulunur (bölümler önceden taranmaz). iframe buraya gelir, oynatıcıya 302 ile gider.
+// Video bu sunucudan geçmez; sadece bölüm sayfası okunur. Sonuç 12 saat önbellekte. Sadece izinli sitelerden (Referer) çağrılabilir.
+async function d82Bolum(req, env, url) {
+  const yol = url.searchParams.get('y') || '';
+  if (!/^\/dizi\/[a-z0-9-]+\/sezon\/\d{1,3}\/bolum\/\d{1,4}$/.test(yol)) return new Response('Geçersiz bölüm.', { status: 400 });
+  const ref = req.headers.get('Referer') || '';
+  const izinli = (env.IZINLI_ADRESLER || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (ref && izinli.length && !izinli.some(a => ref.startsWith(a))) return new Response('İzin yok.', { status: 403 });
+  const onbellek = caches.default, anahtar = new Request('https://filmx-onbellek/d82' + yol);
+  let hedef = await onbellek.match(anahtar).then(r => r && r.text()).catch(() => '');
+  if (!hedef) {
+    const r = await fetch('https://dizi82.life' + yol, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36' } });
+    const html = r.ok ? await r.text() : '';
+    hedef = (html.match(/<iframe[^>]*?\ssrc="(https:\/\/[^"]+\/player\/[A-Za-z0-9_-]+)"/i) || [])[1] || '';
+    if (hedef) await onbellek.put(anahtar, new Response(hedef, { headers: { 'Cache-Control': 'max-age=43200' } })).catch(() => {});
+  }
+  if (!hedef) return new Response('<p style="font:15px system-ui;color:#ddd;background:#000;margin:0;padding:24px">Bu bölüm şu an açılamıyor. Biraz sonra tekrar deneyin.</p>',
+    { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return new Response(null, { status: 302, headers: { Location: hedef, 'Cache-Control': 'no-store' } });
+}
+
 export default {
   async fetch(req, env) {
     const h = cors(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
     const url = new URL(req.url);
+    if (req.method === 'GET' && url.pathname === '/d82') return d82Bolum(req, env, url);
     const uc = UCLAR[req.method + ' ' + url.pathname];
     if (!uc) return json({ hata: 'Bulunamadı' }, 404, h);
     try {
