@@ -18,11 +18,29 @@
 <div id="durum">Yükleniyor…</div>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script>
+// #<base64url m3u8>          : doğrudan video (fullhd)
+// #vm:<vidmoly kimliği>       : m3u8 vidmoly sayfasından taze alınır (adres süreli; vidmoly bizim siteye CORS izni veriyor)
+// #dk:<base64url sunucu adresi>: önce giriş sunucusundan bölümün vidmoly kimlikleri { vm: [..] }, sonra yukarıdaki gibi
 (function () {
   var v = document.getElementById('v'), durum = document.getElementById('durum');
   function goster(t) { durum.textContent = t; durum.style.display = t ? 'flex' : 'none'; }
-  var adres = '';
-  try { var h = location.hash.slice(1).replace(/-/g, '+').replace(/_/g, '/'); adres = decodeURIComponent(escape(atob(h))); } catch (e) {}
+  function b64(s) { return decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))); }
+  // m3u8 bulunamazsa son çare: vidmoly'nin kendi oynatıcısı
+  function vmGom(id) { goster(''); v.remove(); var f = document.createElement('iframe'); f.src = 'https://vidmoly.org/embed-' + id + '.html';
+    f.allow = 'autoplay; fullscreen'; f.allowFullscreen = true; f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0'; document.body.appendChild(f); }
+  function vmM3u8(id) { return fetch('https://vidmoly.org/embed-' + id + '.html', { credentials: 'omit' }).then(function (r) { return r.ok ? r.text() : ''; })
+    .then(function (h) { var m = h.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/); return m ? m[0] : ''; }).catch(function () { return ''; }); }
+  function vmDene(ids, i) { if (i >= ids.length) return Promise.resolve(''); return vmM3u8(ids[i]).then(function (u) { return u || vmDene(ids, i + 1); }); }
+  var h = location.hash.slice(1), soz;
+  if (h.indexOf('vm:') === 0) { var id = h.slice(3); soz = vmDene([id], 0).then(function (u) { if (!u) vmGom(id); return u; }); }
+  else if (h.indexOf('dk:') === 0) {
+    soz = fetch(b64(h.slice(3))).then(function (r) { return r.json(); }).then(function (j) { var ids = (j && j.vm) || [];
+      if (!ids.length) { goster('Bu bölüm şu an açılamıyor.'); return ''; }
+      return vmDene(ids, 0).then(function (u) { if (!u) vmGom(ids[0]); return u; }); }).catch(function () { goster('Bu bölüm şu an açılamıyor.'); return ''; });
+  } else { var a = ''; try { a = b64(h); } catch (e) {} soz = Promise.resolve(a); }
+  goster('Yükleniyor…');
+  soz.then(function (adres) { if (adres) oynat(adres); });
+  function oynat(adres) {
   if (!/^https:\/\//.test(adres)) { goster('Video adresi geçersiz.'); return; }
   v.addEventListener('playing', function () { goster(''); });
   v.addEventListener('loadedmetadata', function () { goster(''); });
@@ -37,6 +55,7 @@
     hls.loadSource(adres); hls.attachMedia(v);
   } else if (v.canPlayType('application/vnd.apple.mpegurl')) { v.src = adres; }   // iOS Safari: yerleşik HLS
   else goster('Tarayıcı bu videoyu oynatamıyor.');
+  }
 })();
 </script>
 </body>

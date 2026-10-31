@@ -284,12 +284,29 @@ async function d82Bolum(req, env, url) {
   return new Response(null, { status: 302, headers: { Location: hedef, 'Cache-Control': 'no-store' } });
 }
 
+// dizikorea3 bölümü: tıklanınca bölüm sayfasından vidmoly kimliği(leri) -> { vm: [..] }. Video bu sunucudan geçmez;
+// sayfa (oynat.html) m3u8'i vidmoly'den kendisi alır. Sonuç 12 saat önbellekte.
+async function dkBolum(req, env, url, h) {
+  const yol = url.searchParams.get('y') || '';
+  if (!/^\/dizi\/[a-z0-9-]+\/sezon-\d{1,3}\/bolum-\d{1,4}$/.test(yol)) return json({ hata: 'Geçersiz bölüm.' }, 400, h);
+  const onbellek = caches.default, anahtar = new Request('https://filmx-onbellek/dk' + yol);
+  let vm = await onbellek.match(anahtar).then(r => r && r.json()).catch(() => null);
+  if (!vm) {
+    const r = await fetch('https://dizikorea3.com' + yol, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36' } });
+    const html = r.ok ? await r.text() : '';
+    vm = [...new Set([...html.matchAll(/vidmoly\.[a-z]+\\?\/(?:embed-|e\/|w\/)?([a-z0-9]{12})/gi)].map(m => m[1]))];
+    if (vm.length) await onbellek.put(anahtar, new Response(JSON.stringify(vm), { headers: { 'Cache-Control': 'max-age=43200' } })).catch(() => {});
+  }
+  return vm.length ? json({ vm }, 200, h) : json({ hata: 'Bu bölüm şu an açılamıyor.' }, 404, h);
+}
+
 export default {
   async fetch(req, env) {
     const h = cors(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
     const url = new URL(req.url);
     if (req.method === 'GET' && url.pathname === '/d82') return d82Bolum(req, env, url);
+    if (req.method === 'GET' && url.pathname === '/dk') return dkBolum(req, env, url, h);
     const uc = UCLAR[req.method + ' ' + url.pathname];
     if (!uc) return json({ hata: 'Bulunamadı' }, 404, h);
     try {
