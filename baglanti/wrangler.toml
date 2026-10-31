@@ -1,0 +1,16 @@
+# Yayın: npx wrangler pages deploy (bu klasörde)
+name = "filmx-baglanti"
+pages_build_output_dir = "./public"
+compatibility_date = "2025-09-01"
+
+[[services]]
+binding = "GIRIS"
+service = "filmx-giris"
+
+[[services]]
+binding = "MAC"
+service = "filmx-mac"
+
+[[services]]
+binding = "ROBOT"
+service = "filmx-robot"
