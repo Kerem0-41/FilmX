@@ -46,13 +46,18 @@ button.dolu svg{fill:currentColor;stroke:none}
 .bos{flex:1}
 #ses{width:90px;accent-color:var(--k)}
 @media (pointer:coarse){#ses{display:none}}
-#menu{position:absolute;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));background:#141414f2;border:1px solid #333;border-radius:10px;min-width:220px;max-height:60vh;overflow:auto;display:none;padding:6px 0}
+#menu{position:absolute;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));background:#141414f5;border:1px solid #2a2a2a;border-radius:12px;width:250px;max-height:62vh;overflow-y:auto;overflow-x:hidden;display:none;padding:6px 0;box-shadow:0 12px 40px #000a;scrollbar-width:thin;scrollbar-color:#555 transparent}
+#menu::-webkit-scrollbar{width:6px}#menu::-webkit-scrollbar-track{background:transparent}#menu::-webkit-scrollbar-thumb{background:#555;border-radius:3px}
 #menu.ac{display:block}
 #menu h4{margin:8px 16px 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#999}
 #menu .s{padding:9px 16px 9px 36px;cursor:pointer;position:relative;font-size:14px}
 #menu .s:hover{background:#ffffff14}
 #menu .s.sec::before{content:"";position:absolute;left:14px;top:50%;width:10px;height:10px;margin-top:-5px;border-radius:50%;background:var(--k)}
-#menu .not{padding:2px 16px 8px;color:#999;font-size:12px}
+#menu .hizlar{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px 12px 10px}
+#menu .s.h{padding:8px 0;text-align:center;border:1px solid #333;border-radius:8px}
+#menu .s.h.sec{background:var(--k);border-color:var(--k)}
+#menu .s.h.sec::before{display:none}
+#menu .not{padding:0 16px 8px 36px;color:#888;font-size:12px;line-height:1.4}
 #orta{position:absolute;top:50%;left:50%;width:84px;height:84px;margin:-42px;border-radius:50%;background:#0008;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s}
 #orta.goster{opacity:1;transform:scale(1.1)}
 #orta svg{width:44px;height:44px;fill:#fff}
@@ -83,7 +88,8 @@ button.dolu svg{fill:currentColor;stroke:none}
       <input id="ses" type="range" min="0" max="1" step="0.02" value="1">
       <span id="sure">0:00 / 0:00</span>
       <span class="bos"></span>
-      <button id="bAlt" title="Altyazı ve ayarlar (C)"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 13h4M12 13h6M6 16h8M16 16h2"/></svg></button>
+      <button id="bAlt" title="Altyazı ve ses (C)"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 13h4M12 13h6M6 16h8M16 16h2"/></svg></button>
+      <button id="bAyar" title="Ayarlar: kalite ve hız"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
       <button id="bPip" title="Resim içinde resim"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="8" height="6" rx="1" fill="currentColor"/></svg></button>
       <button id="bTam" title="Tam ekran (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
     </div>
@@ -103,7 +109,7 @@ button.dolu svg{fill:currentColor;stroke:none}
     return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0'); }
   function sakla(k, d) { try { localStorage.setItem('fxo_' + k, JSON.stringify(d)); } catch (e) {} }
   function oku(k, d) { try { var x = localStorage.getItem('fxo_' + k); return x == null ? d : JSON.parse(x); } catch (e) { return d; } }
-  try { var bq = new URLSearchParams(location.search).get('b') || (window.parent !== window && parent.document && parent.document.title) || ''; $('baslik').textContent = bq; } catch (e) {}
+  try { var bq = new URLSearchParams(location.search).get('b') || (function () { var e = window.frameElement && window.frameElement.closest('.player-wrap'); e = e && e.querySelector('.player-title'); return e ? e.textContent.replace(/^\s*▶\s*/, '') : ''; })(); $('baslik').textContent = bq; } catch (e) {}
 
   // ---------- kaynak çözme (eski oynat.html ile aynı adres biçimleri) ----------
   function vmGom(id) { goster(''); kutu.remove(); var f = document.createElement('iframe'); f.src = 'https://vidmoly.org/embed-' + id + '.html';
@@ -159,7 +165,10 @@ button.dolu svg{fill:currentColor;stroke:none}
       hls.on(Hls.Events.MANIFEST_PARSED, function () { menuKur(); devam(); });
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, function () { sesDiliSec(); menuKur(); altyaziUygula(); });
       hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, function () { kaynakAltyazi(); });
-      hls.on(Hls.Events.SUBTITLE_FRAG_PROCESSED, function () { kaynakCuelar(); });
+      hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, function () { kaynakListe = []; if (altSecim !== 'kapali' && hls.subtitleTrack >= 0) satirlar = kaynakListe; });
+      hls.on(Hls.Events.CUES_PARSED, function (_, d) { if (d.type !== 'subtitles' || hls.subtitleTrack < 0) return;
+        (d.cues || []).forEach(function (c) { kaynakListe.push({ b: c.startTime, s: c.endTime, m: String(c.text || '').replace(/<[^>]+>/g, '') }); });
+        if (altSecim !== 'kapali' && hls.subtitleTrack >= 0) satirlar = kaynakListe; });
       hls.loadSource(adres); hls.attachMedia(v);
     } else if (hlsMi && !v.canPlayType('application/vnd.apple.mpegurl')) { goster('Tarayıcı bu videoyu oynatamıyor.', false); return; }
     else { v.src = adres; v.addEventListener('loadedmetadata', function () { menuKur(); devam(); }, { once: true }); }
@@ -253,7 +262,8 @@ button.dolu svg{fill:currentColor;stroke:none}
     else if (i >= 0) hls.audioTrack = i;
     if (!altElle) altSecim = trDublajMi() ? 'kapali' : 'tr'; }   // 'tr' (Türkçe: kaynak ya da yapay zekâ), 'kapali', 'k:<indeks>'
   function menuKur() {
-    var m = $('menu'), x = '<h4>Altyazı</h4>';
+    var m = $('menu'), x = '';
+    if (menuTur === 'alt') { x += '<h4>Altyazı</h4>';
     x += '<div class="s' + (altSecim === 'kapali' ? ' sec' : '') + '" data-a="kapali">Kapalı</div>';
     x += '<div class="s' + (altSecim === 'tr' ? ' sec' : '') + '" data-a="tr">Türkçe' + (trKaynakIndeks() >= 0 ? '' : ' (otomatik)') + '</div>';
     (hls && hls.subtitleTracks || []).forEach(function (t, i) { if (i === trKaynakIndeks()) return;
@@ -261,16 +271,24 @@ button.dolu svg{fill:currentColor;stroke:none}
     if (altSecim === 'tr' && trKaynakIndeks() < 0) x += '<div class="not">' + altNot() + '</div>';
     if (hls && hls.audioTracks && hls.audioTracks.length > 1) { x += '<h4>Ses</h4>';
       hls.audioTracks.forEach(function (t, i) { x += '<div class="s' + (hls.audioTrack === i ? ' sec' : '') + '" data-ses="' + i + '">' + (i === trSesIndeks() ? 'Türkçe dublaj' : (t.name || t.lang || ('Ses ' + (i + 1)))) + '</div>'; }); }
+    }
+    if (menuTur === 'ayar') {
     if (hls && hls.levels && hls.levels.length > 1) {
       x += '<h4>Kalite</h4><div class="s' + (hls.autoLevelEnabled ? ' sec' : '') + '" data-q="-1">Otomatik</div>';
       hls.levels.map(function (l, i) { return { i: i, h: l.height || 0, b: l.bitrate }; }).sort(function (a, b) { return b.h - a.h || b.b - a.b; })
         .forEach(function (l) { x += '<div class="s' + (!hls.autoLevelEnabled && hls.currentLevel === l.i ? ' sec' : '') + '" data-q="' + l.i + '">' + (l.h ? l.h + 'p' : Math.round(l.b / 1000) + ' kbps') + '</div>'; });
     }
     x += '<h4>Hız</h4>';
-    [0.5, 0.75, 1, 1.25, 1.5, 2].forEach(function (r) { x += '<div class="s' + (v.playbackRate === r ? ' sec' : '') + '" data-h="' + r + '">' + (r === 1 ? 'Normal' : r + 'x') + '</div>'; });
+    x += '<div class="hizlar">'; [0.5, 0.75, 1, 1.25, 1.5, 2].forEach(function (r) { x += '<div class="s h' + (v.playbackRate === r ? ' sec' : '') + '" data-h="' + r + '">' + r + 'x</div>'; }); x += '</div>';
+    if (!hls || !hls.levels || hls.levels.length < 2) x = '<h4>Kalite</h4><div class="not" style="padding-left:16px">Bu videonun tek kalitesi var.</div>' + x;
+    }
     m.innerHTML = x;
   }
-  $('bAlt').onclick = function (e) { if (e) e.stopPropagation(); menuKur(); $('menu').classList.toggle('ac'); acKontrol(); };
+  var menuTur = 'alt';
+  function menuAc(tur, e) { if (e) e.stopPropagation(); var m = $('menu'), acik = m.classList.contains('ac');
+    if (acik && menuTur === tur) m.classList.remove('ac'); else { menuTur = tur; menuKur(); m.classList.add('ac'); } acKontrol(); }
+  $('bAlt').onclick = function (e) { menuAc('alt', e); };
+  $('bAyar').onclick = function (e) { menuAc('ayar', e); };
   $('menu').onclick = function (e) { var s = e.target.closest('.s'); if (!s) return; e.stopPropagation();
     if (s.dataset.a) { altSecim = s.dataset.a; altElle = true; sakla('alt', altSecim); sakla('altElle', true); altyaziUygula(); }
     if (s.dataset.ses) { var si = +s.dataset.ses, tt = hls.audioTracks[si]; hls.audioTrack = si; sakla('sesDil', tt.lang || tt.name);
@@ -281,7 +299,7 @@ button.dolu svg{fill:currentColor;stroke:none}
   v.playbackRate = oku('hiz', 1);
 
   // ---------- altyazı ----------
-  var satirlar = [];   // {b, s, m} — ekranda gösterilen liste (kaynak ya da yapay zekâ)
+  var satirlar = [], kaynakListe = [], sonParca = -1;   // {b, s, m} — ekranda gösterilen liste (kaynak ya da yapay zekâ)
   var aiSatirlar = [], aiParcalar = {}, aiDurum = '';
   function altNot() { return aiDurum || 'İlk izleyişte yapay zekâ ile hazırlanır, sonra kaydedilir.'; }
   function trKaynakIndeks() { var t = (hls && hls.subtitleTracks) || []; for (var i = 0; i < t.length; i++) if (/^(tr|tur|tür)/i.test(t[i].lang || '') || /türk|turk/i.test(t[i].name || '')) return i; return -1; }
@@ -292,11 +310,15 @@ button.dolu svg{fill:currentColor;stroke:none}
     if (liste.length) satirlar = liste;
   }
   function altyaziUygula() {
+    altSpan.textContent = '';
     var tri = trKaynakIndeks();
     if (altSecim === 'kapali') { if (hls) hls.subtitleTrack = -1; satirlar = []; }
-    else if (altSecim.indexOf('k:') === 0) { if (hls) hls.subtitleTrack = +altSecim.slice(2); satirlar = []; }
-    else if (tri >= 0) { hls.subtitleTrack = tri; satirlar = []; }
+    else if (altSecim.indexOf('k:') === 0) { if (hls) hls.subtitleTrack = +altSecim.slice(2); satirlar = kaynakListe; }
+    else if (tri >= 0) { hls.subtitleTrack = tri; satirlar = kaynakListe; }
     else { if (hls) hls.subtitleTrack = -1; satirlar = aiSatirlar; }
+    // altyazı parçası açılınca hls.js bulunduğu anın parçasını hemen yüklesin: aynı yere küçük bir sarma
+    if (hls && hls.subtitleTrack >= 0 && hls.subtitleTrack !== sonParca && v.readyState > 0) { var t0 = v.currentTime; setTimeout(function () { v.currentTime = t0 + 0.01; }, 300); }
+    sonParca = hls ? hls.subtitleTrack : -1;
     rozet();
   }
   function rozet() { var r = $('rozet'); if (altSecim === 'tr' && trKaynakIndeks() < 0 && aiDurum) { r.textContent = aiDurum; r.style.display = 'block'; } else r.style.display = 'none'; }
@@ -307,7 +329,10 @@ button.dolu svg{fill:currentColor;stroke:none}
   // yapay zekâ altyazısı: kayıtlıysa al; eksik kısımları izlerken sesi kaydedip gönder
   var PARCA = 30;
   function robot(g) { return fetch(ROBOT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(g) }).then(function (r) { return r.json(); }); }
-  function aiEkle(l) { aiSatirlar = aiSatirlar.concat(l).sort(function (a, b) { return a.b - b.b; }); if (altSecim === 'tr' && trKaynakIndeks() < 0) satirlar = aiSatirlar; }
+  function aiEkle(l) { aiSatirlar = aiSatirlar.concat(l).sort(function (a, b) { return a.b - b.b; });
+    // yapay zekânın bitiş zamanı kısa kalabiliyor: satır, okuma süresi kadar (ve sonraki cümle başlayana dek) ekranda kalsın
+    for (var i = 0; i < aiSatirlar.length; i++) { var x = aiSatirlar[i], son = i + 1 < aiSatirlar.length ? aiSatirlar[i + 1].b - 0.05 : 1e9;
+      x.s = Math.min(Math.max(x.s, x.b + 1.5 + x.m.length * 0.065), x.b + 9); if (son - x.s < 1.2 && son > x.b) x.s = son; x.s = Math.min(x.s, Math.max(son, x.b + 1)); } if (altSecim === 'tr' && trKaynakIndeks() < 0) satirlar = aiSatirlar; }
   function altyaziBaslat() {
     if (!anahtar) return;
     robot({ islem: 'al', k: anahtar }).then(function (j) { (j.parcalar || []).forEach(function (b) { aiParcalar[Math.floor(b / PARCA) * PARCA] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
