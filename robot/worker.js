@@ -133,6 +133,46 @@ async function denemeFazla(env, ip, yanlis) {   // 15 dk içinde 8 yanlış dene
   return (r && r.n) >= 8;
 }
 
+// ---------- Türkçe altyazı (oynat.html) ----------
+// Oynatıcı videoyu izlerken sesi ~30 sn'lik parçalar halinde yollar (video sunucudan geçmez). Gemini yazıya döker + Türkçeye çevirir,
+// D1'e kaydedilir; sonraki izleyiciler hazır altyazıyı alır. k = videonun kimliği (oynatıcı adresinden türetilir).
+const SES_MODELLER = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash'];
+const ALT_TALIMAT = `Bu bir film/dizi ses parçası. Konuşulan her cümleyi yazıya dök ve TÜRKÇE'ye çevir (zaten Türkçeyse olduğu gibi yaz).
+Müzik/sessizlik için bir şey yazma. Zamanlar parçanın başından itibaren saniye cinsinden olsun.
+SADECE şu JSON'u ver: [{"b":1.2,"s":3.4,"m":"Türkçe cümle"}]  (boşsa [])`;
+async function altTablo(env) { await env.filmx_db.prepare('CREATE TABLE IF NOT EXISTS altyazi (k TEXT, bas INTEGER, veri TEXT, PRIMARY KEY (k, bas))').run(); }
+async function altyaziAl(env, g) {
+  const k = String(g.k || '').slice(0, 300); if (!k || !env.filmx_db) return { satirlar: [], parcalar: [] };
+  await altTablo(env);
+  const r = await env.filmx_db.prepare('SELECT bas, veri FROM altyazi WHERE k = ? ORDER BY bas').bind(k).all();
+  const satirlar = [], parcalar = [];
+  for (const x of r.results || []) { parcalar.push(x.bas); try { satirlar.push(...JSON.parse(x.veri)); } catch (e) {} }
+  return { satirlar, parcalar };
+}
+async function altyaziParca(env, g) {
+  const k = String(g.k || '').slice(0, 300), bas = Math.max(0, Math.round(+g.bas || 0)), ses = String(g.ses || ''), mime = String(g.mime || 'audio/webm').split(';')[0];
+  if (!k || !ses || ses.length > 3_000_000 || !env.filmx_db) return { ok: false };
+  await altTablo(env);
+  const var_ = await env.filmx_db.prepare('SELECT veri FROM altyazi WHERE k = ? AND bas = ?').bind(k, bas).first();
+  if (var_) return { ok: true, satirlar: JSON.parse(var_.veri) };
+  for (const model of SES_MODELLER) {
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_KEY },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ inlineData: { mimeType: mime, data: ses } }, { text: ALT_TALIMAT }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 4000, responseMimeType: 'application/json' } }) });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const t = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join('').replace(/```json|```/g, '');
+      const a = t.indexOf('['), b = t.lastIndexOf(']'); if (a < 0) continue;
+      const satirlar = JSON.parse(t.slice(a, b + 1)).map(x => ({ b: +(bas + (+x.b || 0)).toFixed(2), s: +(bas + (+x.s || (+x.b || 0) + 2)).toFixed(2), m: String(x.m || '').slice(0, 300) })).filter(x => x.m);
+      await env.filmx_db.prepare('INSERT OR REPLACE INTO altyazi (k, bas, veri) VALUES (?, ?, ?)').bind(k, bas, JSON.stringify(satirlar)).run();
+      return { ok: true, satirlar };
+    } catch (e) { /* sıradaki model */ }
+  }
+  return { ok: false };
+}
+
 export default {
   async fetch(req, env, ctx) {
     const h = cors(req, env);
@@ -141,6 +181,12 @@ export default {
     if (false && await gunlukSinirAsildi(env)) return json({ cevap: 'Bugünlük soru hakkım doldu 🙂 Yarın tekrar konuşalım!', oneriler: [], kategori: '' }, 200, h);
 
     const ip = req.headers.get('CF-Connecting-IP') || 'yerel';
+    if (new URL(req.url).pathname === '/altyazi') {
+      let a; try { a = await req.json(); } catch (e) { return json({ hata: 'geçersiz istek' }, 400, h); }
+      if (a.islem === 'al') return json(await altyaziAl(env, a), 200, h);
+      if (a.islem === 'parca') return json(await altyaziParca(env, a), 200, h);
+      return json({ hata: 'bilinmeyen' }, 400, h);
+    }
     if (sinirAsildi(ip)) return json({ cevap: 'Biraz hızlı gidiyoruz 🙂 Bir dakika sonra tekrar sorar mısın?', oneriler: [], kategori: '' }, 200, h);
 
     let g; try { g = await req.json(); } catch (e) { return json({ hata: 'geçersiz istek' }, 400, h); }

@@ -2,59 +2,314 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>FilmX Oynatıcı</title>
-<!-- Doğrudan HLS (m3u8) oynatıcı: adres #'ten sonra base64url olarak gelir (oynat.html#<adres>). Video bizim sunucudan geçmez. -->
+<!-- FilmX'in kendi oynatıcısı (Netflix tarzı, kırmızı). Adres #'ten sonra gelir:
+     #<base64url m3u8/mp4>  doğrudan video   |  #vm:<vidmoly kimliği>  |  #dk:<base64url sunucu adresi>
+     Video bizim sunucudan geçmez. Türkçe altyazı: kaynakta varsa o; yoksa izlerken ses parçaları robot sunucusuna gider,
+     Gemini yazıya döküp Türkçeye çevirir, kaydedilir; sonraki açılışta hazır gelir. -->
 <style>
-  html,body{margin:0;height:100%;background:#000;overflow:hidden}
-  video{width:100%;height:100%;background:#000;display:block}
-  #durum{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#ddd;font:15px system-ui,sans-serif;text-align:center;padding:16px;pointer-events:none}
+:root{--k:#e50914;--k2:#ff2a36;--y:#fff;--g:rgba(255,255,255,.7)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font:15px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--y);user-select:none}
+#kutu{position:fixed;inset:0;background:#000}
+video{width:100%;height:100%;display:block;background:#000}
+#durum{position:absolute;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;text-align:center;padding:16px;pointer-events:none;color:#ddd}
+.don{width:54px;height:54px;border:4px solid rgba(255,255,255,.15);border-top-color:var(--k);border-radius:50%;animation:d 0.9s linear infinite}
+@keyframes d{to{transform:rotate(360deg)}}
+#alt{position:absolute;left:0;right:0;bottom:12%;display:flex;justify-content:center;pointer-events:none;padding:0 6%;transition:bottom .25s}
+#kutu.acik #alt{bottom:calc(110px + env(safe-area-inset-bottom))}
+#alt span{background:rgba(0,0,0,.72);padding:4px 12px;border-radius:6px;font-size:clamp(16px,2.6vw,30px);line-height:1.35;text-align:center;white-space:pre-line;text-shadow:0 1px 2px #000}
+#alt span:empty{display:none}
+#ust,#alts{position:absolute;left:0;right:0;opacity:0;transition:opacity .25s;pointer-events:none}
+#kutu.acik #ust,#kutu.acik #alts{opacity:1;pointer-events:auto}
+#ust{top:0;padding:calc(14px + env(safe-area-inset-top)) 20px 40px;background:linear-gradient(#000c,#0000);font-size:17px;font-weight:600}
+#alts{bottom:0;padding:40px 18px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(#0000,#000d)}
+#cizgi{position:relative;height:18px;display:flex;align-items:center;cursor:pointer;touch-action:none}
+#cizgi .r{position:absolute;left:0;right:0;height:4px;background:rgba(255,255,255,.25);border-radius:2px;transition:height .15s}
+#cizgi:hover .r,#cizgi.surukle .r{height:7px}
+#cizgi .tm,#cizgi .iz{position:absolute;left:0;height:100%;border-radius:2px}
+#cizgi .tm{background:rgba(255,255,255,.4);width:0}
+#cizgi .iz{background:var(--k);width:0}
+#cizgi .nk{position:absolute;width:15px;height:15px;margin-left:-7.5px;border-radius:50%;background:var(--k);left:0;transform:scale(0);transition:transform .15s}
+#cizgi:hover .nk,#cizgi.surukle .nk{transform:scale(1)}
+#ipucu{position:absolute;bottom:22px;padding:3px 8px;background:#000d;border-radius:4px;font-size:13px;transform:translateX(-50%);display:none}
+#cizgi:hover #ipucu,#cizgi.surukle #ipucu{display:block}
+#dugmeler{display:flex;align-items:center;gap:6px;margin-top:6px}
+button{background:none;border:0;color:var(--y);padding:8px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+button:hover{background:rgba(255,255,255,.1)}
+button svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+button.dolu svg{fill:currentColor;stroke:none}
+#sure{font-variant-numeric:tabular-nums;color:var(--g);margin-left:6px;font-size:14px;white-space:nowrap}
+.bos{flex:1}
+#ses{width:90px;accent-color:var(--k)}
+@media (pointer:coarse){#ses{display:none}}
+#menu{position:absolute;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));background:#141414f2;border:1px solid #333;border-radius:10px;min-width:220px;max-height:60vh;overflow:auto;display:none;padding:6px 0}
+#menu.ac{display:block}
+#menu h4{margin:8px 16px 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#999}
+#menu .s{padding:9px 16px 9px 36px;cursor:pointer;position:relative;font-size:14px}
+#menu .s:hover{background:#ffffff14}
+#menu .s.sec::before{content:"";position:absolute;left:14px;top:50%;width:10px;height:10px;margin-top:-5px;border-radius:50%;background:var(--k)}
+#menu .not{padding:2px 16px 8px;color:#999;font-size:12px}
+#orta{position:absolute;top:50%;left:50%;width:84px;height:84px;margin:-42px;border-radius:50%;background:#0008;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s}
+#orta.goster{opacity:1;transform:scale(1.1)}
+#orta svg{width:44px;height:44px;fill:#fff}
+.atla{position:absolute;top:0;bottom:0;width:33%;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .3s;font-weight:700;font-size:18px}
+.atla.goster{opacity:1}
+#atlaG{left:0;background:radial-gradient(circle at left,#ffffff22,#0000 70%)}
+#atlaI{right:0;background:radial-gradient(circle at right,#ffffff22,#0000 70%)}
+#rozet{position:absolute;top:calc(14px + env(safe-area-inset-top));right:16px;font-size:12px;padding:4px 9px;border-radius:20px;background:#e5091433;border:1px solid var(--k);color:#fff;display:none}
+#marka{color:var(--k);font-weight:900;letter-spacing:.04em;margin-right:10px}
 </style>
 </head>
 <body>
-<video id="v" controls playsinline preload="metadata"></video>
-<div id="durum">Yükleniyor…</div>
+<div id="kutu">
+  <video id="v" playsinline preload="metadata"></video>
+  <div id="alt"><span></span></div>
+  <div id="durum"><div class="don"></div><div id="dyazi">Yükleniyor…</div></div>
+  <div id="orta"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+  <div class="atla" id="atlaG">-10 sn</div><div class="atla" id="atlaI">+10 sn</div>
+  <div id="ust"><span id="marka">FILMX</span><span id="baslik"></span></div>
+  <div id="rozet"></div>
+  <div id="alts">
+    <div id="cizgi"><div class="r"><div class="tm"></div><div class="iz"></div></div><div class="nk"></div><div id="ipucu">0:00</div></div>
+    <div id="dugmeler">
+      <button id="bOyna" class="dolu" title="Oynat (Boşluk)"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+      <button id="bGeri" title="10 sn geri (←)"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.5" font-size="7.5" text-anchor="middle" fill="currentColor" stroke="none" font-weight="700">10</text></svg></button>
+      <button id="bIleri" title="10 sn ileri (→)"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.5" font-size="7.5" text-anchor="middle" fill="currentColor" stroke="none" font-weight="700">10</text></svg></button>
+      <button id="bSes" title="Ses (M)"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path id="dalga" d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg></button>
+      <input id="ses" type="range" min="0" max="1" step="0.02" value="1">
+      <span id="sure">0:00 / 0:00</span>
+      <span class="bos"></span>
+      <button id="bAlt" title="Altyazı ve ayarlar (C)"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 13h4M12 13h6M6 16h8M16 16h2"/></svg></button>
+      <button id="bPip" title="Resim içinde resim"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="8" height="6" rx="1" fill="currentColor"/></svg></button>
+      <button id="bTam" title="Tam ekran (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    </div>
+  </div>
+  <div id="menu"></div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script>
-// #<base64url m3u8>          : doğrudan video (fullhd)
-// #vm:<vidmoly kimliği>       : m3u8 vidmoly sayfasından taze alınır (adres süreli; vidmoly bizim siteye CORS izni veriyor)
-// #dk:<base64url sunucu adresi>: önce giriş sunucusundan bölümün vidmoly kimlikleri { vm: [..] }, sonra yukarıdaki gibi
 (function () {
-  var v = document.getElementById('v'), durum = document.getElementById('durum');
-  function goster(t) { durum.textContent = t; durum.style.display = t ? 'flex' : 'none'; }
+  var ROBOT = 'https://filmx-robot.chatbox-tk.workers.dev/altyazi';
+  var $ = function (i) { return document.getElementById(i); };
+  var v = $('v'), kutu = $('kutu'), durum = $('durum'), altSpan = document.querySelector('#alt span');
+  var hls = null, anahtar = '';
+  function goster(t, don) { $('dyazi').textContent = t; durum.style.display = t ? 'flex' : 'none'; durum.querySelector('.don').style.display = don === false ? 'none' : ''; }
   function b64(s) { return decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))); }
-  // m3u8 bulunamazsa son çare: vidmoly'nin kendi oynatıcısı
-  function vmGom(id) { goster(''); v.remove(); var f = document.createElement('iframe'); f.src = 'https://vidmoly.org/embed-' + id + '.html';
+  function saat(s) { s = Math.max(0, Math.floor(s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0'); }
+  function sakla(k, d) { try { localStorage.setItem('fxo_' + k, JSON.stringify(d)); } catch (e) {} }
+  function oku(k, d) { try { var x = localStorage.getItem('fxo_' + k); return x == null ? d : JSON.parse(x); } catch (e) { return d; } }
+  try { var bq = new URLSearchParams(location.search).get('b') || (window.parent !== window && parent.document && parent.document.title) || ''; $('baslik').textContent = bq; } catch (e) {}
+
+  // ---------- kaynak çözme (eski oynat.html ile aynı adres biçimleri) ----------
+  function vmGom(id) { goster(''); kutu.remove(); var f = document.createElement('iframe'); f.src = 'https://vidmoly.org/embed-' + id + '.html';
     f.allow = 'autoplay; fullscreen'; f.allowFullscreen = true; f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0'; document.body.appendChild(f); }
   function vmM3u8(id) { return fetch('https://vidmoly.org/embed-' + id + '.html', { credentials: 'omit' }).then(function (r) { return r.ok ? r.text() : ''; })
     .then(function (h) { var m = h.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/); return m ? m[0] : ''; }).catch(function () { return ''; }); }
   function vmDene(ids, i) { if (i >= ids.length) return Promise.resolve(''); return vmM3u8(ids[i]).then(function (u) { return u || vmDene(ids, i + 1); }); }
   var h = location.hash.slice(1), soz;
-  if (h.indexOf('vm:') === 0) { var id = h.slice(3); soz = vmDene([id], 0).then(function (u) { if (!u) vmGom(id); return u; }); }
-  else if (h.indexOf('dk:') === 0) {
+  if (h.indexOf('vm:') === 0) { var id = h.slice(3); anahtar = 'vm:' + id; soz = vmDene([id], 0).then(function (u) { if (!u) vmGom(id); return u; }); }
+  else if (h.indexOf('dk:') === 0) { anahtar = h;
     soz = fetch(b64(h.slice(3))).then(function (r) { return r.json(); }).then(function (j) { var ids = (j && j.vm) || [];
-      if (!ids.length) { goster('Bu bölüm şu an açılamıyor.'); return ''; }
-      return vmDene(ids, 0).then(function (u) { if (!u) vmGom(ids[0]); return u; }); }).catch(function () { goster('Bu bölüm şu an açılamıyor.'); return ''; });
-  } else { var a = ''; try { a = b64(h); } catch (e) {} soz = Promise.resolve(a); }
+      if (!ids.length) { goster('Bu bölüm şu an açılamıyor.', false); return ''; }
+      return vmDene(ids, 0).then(function (u) { if (!u) vmGom(ids[0]); return u; }); }).catch(function () { goster('Bu bölüm şu an açılamıyor.', false); return ''; });
+  } else { var a = ''; try { a = b64(h); } catch (e) {} anahtar = a.split('?')[0]; soz = Promise.resolve(a); }
   goster('Yükleniyor…');
   soz.then(function (adres) { if (adres) oynat(adres); });
+
   function oynat(adres) {
-  if (!/^https:\/\//.test(adres)) { goster('Video adresi geçersiz.'); return; }
-  v.addEventListener('playing', function () { goster(''); });
-  v.addEventListener('loadedmetadata', function () { goster(''); });
-  if (window.Hls && Hls.isSupported()) {
-    var hls = new Hls({ maxBufferLength: 60, startLevel: -1 });
-    hls.on(Hls.Events.ERROR, function (_, d) {
-      if (!d.fatal) return;
-      if (d.type === Hls.ErrorTypes.NETWORK_ERROR) { goster('Bağlantı sorunu, tekrar deneniyor…'); setTimeout(function () { hls.startLoad(); }, 2000); }
-      else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-      else goster('Bu video şu an oynatılamıyor.');
-    });
-    hls.loadSource(adres); hls.attachMedia(v);
-  } else if (v.canPlayType('application/vnd.apple.mpegurl')) { v.src = adres; }   // iOS Safari: yerleşik HLS
-  else goster('Tarayıcı bu videoyu oynatamıyor.');
+    if (!/^https:\/\//.test(adres)) { goster('Video adresi geçersiz.', false); return; }
+    v.addEventListener('playing', function () { goster(''); });
+    v.addEventListener('waiting', function () { goster(' '); });
+    v.addEventListener('canplay', function () { goster(''); });
+    var hlsMi = /\.m3u8/i.test(adres) || !/\.(mp4|webm)(\?|$)/i.test(adres);
+    if (hlsMi && window.Hls && Hls.isSupported()) {
+      hls = new Hls({ maxBufferLength: 60, startLevel: -1, enableWebVTT: true, renderTextTracksNatively: false });
+      hls.on(Hls.Events.ERROR, function (_, d) {
+        if (!d.fatal) return;
+        if (d.type === Hls.ErrorTypes.NETWORK_ERROR) { goster('Bağlantı sorunu, tekrar deneniyor…'); setTimeout(function () { hls.startLoad(); }, 2000); }
+        else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+        else goster('Bu video şu an oynatılamıyor.', false);
+      });
+      hls.on(Hls.Events.MANIFEST_PARSED, function () { menuKur(); devam(); });
+      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, function () { kaynakAltyazi(); });
+      hls.on(Hls.Events.SUBTITLE_FRAG_PROCESSED, function () { kaynakCuelar(); });
+      hls.loadSource(adres); hls.attachMedia(v);
+    } else if (hlsMi && !v.canPlayType('application/vnd.apple.mpegurl')) { goster('Tarayıcı bu videoyu oynatamıyor.', false); return; }
+    else { v.src = adres; v.addEventListener('loadedmetadata', function () { menuKur(); devam(); }, { once: true }); }
+    altyaziBaslat();
+  }
+
+  // kaldığı yerden devam + otomatik oynat
+  function devam() { var t = oku('t_' + anahtar, 0); if (t > 30 && (!v.duration || t < v.duration - 60)) v.currentTime = t;
+    var p = v.play(); if (p && p.catch) p.catch(function () { v.muted = true; v.play().catch(function () {}); sesCiz(); }); }
+  setInterval(function () { if (!v.paused && v.currentTime > 0) sakla('t_' + anahtar, Math.floor(v.currentTime)); }, 5000);
+
+  // ---------- kontroller ----------
+  var gizleZ;
+  function acKontrol() { kutu.classList.add('acik'); kutu.style.cursor = ''; clearTimeout(gizleZ);
+    gizleZ = setTimeout(function () { if (!v.paused && !$('menu').classList.contains('ac') && !cizgi.classList.contains('surukle')) { kutu.classList.remove('acik'); kutu.style.cursor = 'none'; } }, 3000); }
+  kutu.addEventListener('mousemove', acKontrol);
+  function oynaDur() { if (v.paused) v.play(); else v.pause(); }
+  function ortaGoster(oyn) { var o = $('orta'); o.querySelector('svg').innerHTML = oyn ? '<path d="M8 5v14l11-7z"/>' : '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+    o.classList.add('goster'); setTimeout(function () { o.classList.remove('goster'); }, 450); }
+  function oynaCiz() { $('bOyna').querySelector('svg').innerHTML = v.paused ? '<path d="M8 5v14l11-7z"/>' : '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'; }
+  v.addEventListener('play', function () { oynaCiz(); acKontrol(); });
+  v.addEventListener('pause', function () { oynaCiz(); acKontrol(); kutu.classList.add('acik'); });
+  $('bOyna').onclick = oynaDur;
+  function atla(s) { v.currentTime = Math.max(0, Math.min((v.duration || 1e9) - 0.5, v.currentTime + s));
+    var e = $(s < 0 ? 'atlaG' : 'atlaI'); e.classList.add('goster'); clearTimeout(e._z); e._z = setTimeout(function () { e.classList.remove('goster'); }, 500); }
+  $('bGeri').onclick = function () { atla(-10); }; $('bIleri').onclick = function () { atla(10); };
+  // video alanı: masaüstünde tık = oynat/durdur; dokunmatikte tek dokunuş = kontroller, çift dokunuş kenarda = ±10 sn
+  var sonDok = 0;
+  v.addEventListener('click', function (e) {
+    if ($('menu').classList.contains('ac')) { $('menu').classList.remove('ac'); return; }
+    var dok = matchMedia('(pointer:coarse)').matches, simdi = Date.now(), x = e.clientX / innerWidth;
+    if (dok) {
+      if (simdi - sonDok < 300 && (x < .35 || x > .65)) { atla(x < .5 ? -10 : 10); sonDok = 0; return; }
+      sonDok = simdi;
+      if (kutu.classList.contains('acik') && !v.paused) { kutu.classList.remove('acik'); } else acKontrol();
+    } else { oynaDur(); ortaGoster(!v.paused); }
+  });
+  v.addEventListener('dblclick', function () { if (!matchMedia('(pointer:coarse)').matches) tamEkran(); });
+
+  // ses
+  v.volume = oku('ses', 1); v.muted = oku('sessiz', false); $('ses').value = v.muted ? 0 : v.volume;
+  function sesCiz() { $('dalga').style.display = v.muted || v.volume === 0 ? 'none' : ''; $('ses').value = v.muted ? 0 : v.volume; }
+  $('ses').oninput = function () { v.volume = +this.value; v.muted = v.volume === 0; sakla('ses', v.volume); sakla('sessiz', v.muted); sesCiz(); };
+  $('bSes').onclick = function () { v.muted = !v.muted; if (!v.muted && v.volume === 0) v.volume = 1; sakla('sessiz', v.muted); sesCiz(); };
+  sesCiz();
+
+  // ilerleme çizgisi
+  var cizgi = $('cizgi');
+  function cizgiGuncelle() { var d = v.duration || 0, t = v.currentTime || 0, o = d ? t / d * 100 : 0;
+    cizgi.querySelector('.iz').style.width = o + '%'; cizgi.querySelector('.nk').style.left = o + '%';
+    var tm = 0; for (var i = 0; i < v.buffered.length; i++) if (v.buffered.start(i) <= t + 1) tm = Math.max(tm, v.buffered.end(i));
+    cizgi.querySelector('.tm').style.width = (d ? tm / d * 100 : 0) + '%';
+    $('sure').textContent = saat(t) + ' / ' + saat(d); }
+  v.addEventListener('timeupdate', cizgiGuncelle); v.addEventListener('progress', cizgiGuncelle); v.addEventListener('durationchange', cizgiGuncelle);
+  function oran(e) { var r = cizgi.getBoundingClientRect(); return Math.max(0, Math.min(1, ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) / r.width)); }
+  function ipucu(e) { var o = oran(e), ip = $('ipucu'); ip.textContent = saat(o * (v.duration || 0)); ip.style.left = (o * 100) + '%'; return o; }
+  cizgi.addEventListener('mousemove', ipucu);
+  cizgi.addEventListener('pointerdown', function (e) { cizgi.classList.add('surukle'); cizgi.setPointerCapture(e.pointerId);
+    var tasi = function (ev) { var o = ipucu(ev); cizgi.querySelector('.iz').style.width = o * 100 + '%'; cizgi.querySelector('.nk').style.left = o * 100 + '%'; };
+    tasi(e); cizgi.onpointermove = tasi;
+    cizgi.onpointerup = function (ev) { cizgi.onpointermove = cizgi.onpointerup = null; cizgi.classList.remove('surukle'); if (v.duration) v.currentTime = oran(ev) * v.duration; acKontrol(); }; });
+
+  // tam ekran + PiP
+  function tamEkran() { var d = document; if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    else if (kutu.requestFullscreen) kutu.requestFullscreen().then(function () { try { screen.orientation.lock('landscape').catch(function () {}); } catch (e) {} }).catch(function () {});
+    else if (kutu.webkitRequestFullscreen) kutu.webkitRequestFullscreen(); else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen(); }
+  $('bTam').onclick = tamEkran;
+  if (!document.pictureInPictureEnabled) $('bPip').style.display = 'none';
+  $('bPip').onclick = function () { if (document.pictureInPictureElement) document.exitPictureInPicture(); else v.requestPictureInPicture().catch(function () {}); };
+
+  // klavye
+  document.addEventListener('keydown', function (e) {
+    if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
+    var k = e.key.toLowerCase();
+    if (k === ' ' || k === 'k') { oynaDur(); ortaGoster(!v.paused); }
+    else if (k === 'arrowleft' || k === 'j') atla(-10); else if (k === 'arrowright' || k === 'l') atla(10);
+    else if (k === 'arrowup') { v.volume = Math.min(1, v.volume + .1); v.muted = false; sesCiz(); }
+    else if (k === 'arrowdown') { v.volume = Math.max(0, v.volume - .1); sesCiz(); }
+    else if (k === 'f') tamEkran(); else if (k === 'm') $('bSes').onclick(); else if (k === 'c') $('bAlt').onclick();
+    else return;
+    e.preventDefault(); acKontrol();
+  });
+
+  // ---------- ayar menüsü: altyazı / kalite / hız ----------
+  var altSecim = oku('alt', 'tr');   // 'tr' (Türkçe: kaynak ya da yapay zekâ), 'kapali', 'k:<indeks>'
+  function menuKur() {
+    var m = $('menu'), x = '<h4>Altyazı</h4>';
+    x += '<div class="s' + (altSecim === 'kapali' ? ' sec' : '') + '" data-a="kapali">Kapalı</div>';
+    x += '<div class="s' + (altSecim === 'tr' ? ' sec' : '') + '" data-a="tr">Türkçe' + (trKaynakIndeks() >= 0 ? '' : ' (otomatik)') + '</div>';
+    (hls && hls.subtitleTracks || []).forEach(function (t, i) { if (i === trKaynakIndeks()) return;
+      x += '<div class="s' + (altSecim === 'k:' + i ? ' sec' : '') + '" data-a="k:' + i + '">' + (t.name || t.lang || ('Altyazı ' + (i + 1))) + '</div>'; });
+    if (altSecim === 'tr' && trKaynakIndeks() < 0) x += '<div class="not">' + altNot() + '</div>';
+    if (hls && hls.levels && hls.levels.length > 1) {
+      x += '<h4>Kalite</h4><div class="s' + (hls.autoLevelEnabled ? ' sec' : '') + '" data-q="-1">Otomatik</div>';
+      hls.levels.map(function (l, i) { return { i: i, h: l.height || 0, b: l.bitrate }; }).sort(function (a, b) { return b.h - a.h || b.b - a.b; })
+        .forEach(function (l) { x += '<div class="s' + (!hls.autoLevelEnabled && hls.currentLevel === l.i ? ' sec' : '') + '" data-q="' + l.i + '">' + (l.h ? l.h + 'p' : Math.round(l.b / 1000) + ' kbps') + '</div>'; });
+    }
+    x += '<h4>Hız</h4>';
+    [0.5, 0.75, 1, 1.25, 1.5, 2].forEach(function (r) { x += '<div class="s' + (v.playbackRate === r ? ' sec' : '') + '" data-h="' + r + '">' + (r === 1 ? 'Normal' : r + 'x') + '</div>'; });
+    m.innerHTML = x;
+  }
+  $('bAlt').onclick = function (e) { if (e) e.stopPropagation(); menuKur(); $('menu').classList.toggle('ac'); acKontrol(); };
+  $('menu').onclick = function (e) { var s = e.target.closest('.s'); if (!s) return; e.stopPropagation();
+    if (s.dataset.a) { altSecim = s.dataset.a; sakla('alt', altSecim); altyaziUygula(); }
+    if (s.dataset.q) { var q = +s.dataset.q; if (q < 0) hls.currentLevel = -1; else hls.currentLevel = q; }
+    if (s.dataset.h) { v.playbackRate = +s.dataset.h; sakla('hiz', v.playbackRate); }
+    menuKur(); };
+  v.playbackRate = oku('hiz', 1);
+
+  // ---------- altyazı ----------
+  var satirlar = [];   // {b, s, m} — ekranda gösterilen liste (kaynak ya da yapay zekâ)
+  var aiSatirlar = [], aiParcalar = {}, aiDurum = '';
+  function altNot() { return aiDurum || 'İlk izleyişte yapay zekâ ile hazırlanır, sonra kaydedilir.'; }
+  function trKaynakIndeks() { var t = (hls && hls.subtitleTracks) || []; for (var i = 0; i < t.length; i++) if (/^(tr|tur|tür)/i.test(t[i].lang || '') || /türk|turk/i.test(t[i].name || '')) return i; return -1; }
+  function kaynakAltyazi() { menuKur(); altyaziUygula(); }
+  function kaynakCuelar() {   // hls.js altyazı parçalarını video.textTracks'e koyar (renderTextTracksNatively:false iken de); oradan okuyoruz
+    var idx = hls ? hls.subtitleTrack : -1; if (idx < 0) return; var liste = [];
+    for (var i = 0; i < v.textTracks.length; i++) { var tt = v.textTracks[i]; tt.mode = 'hidden'; if (tt.cues) for (var j = 0; j < tt.cues.length; j++) liste.push({ b: tt.cues[j].startTime, s: tt.cues[j].endTime, m: tt.cues[j].text.replace(/<[^>]+>/g, '') }); }
+    if (liste.length) satirlar = liste;
+  }
+  function altyaziUygula() {
+    var tri = trKaynakIndeks();
+    if (altSecim === 'kapali') { if (hls) hls.subtitleTrack = -1; satirlar = []; }
+    else if (altSecim.indexOf('k:') === 0) { if (hls) hls.subtitleTrack = +altSecim.slice(2); satirlar = []; }
+    else if (tri >= 0) { hls.subtitleTrack = tri; satirlar = []; }
+    else { if (hls) hls.subtitleTrack = -1; satirlar = aiSatirlar; }
+    rozet();
+  }
+  function rozet() { var r = $('rozet'); if (altSecim === 'tr' && trKaynakIndeks() < 0 && aiDurum) { r.textContent = aiDurum; r.style.display = 'block'; } else r.style.display = 'none'; }
+  v.addEventListener('timeupdate', function () { var t = v.currentTime, s = '';
+    if (altSecim !== 'kapali') for (var i = 0; i < satirlar.length; i++) if (t >= satirlar[i].b && t <= satirlar[i].s) { s += (s ? '\n' : '') + satirlar[i].m; }
+    if (altSpan.textContent !== s) altSpan.textContent = s; });
+
+  // yapay zekâ altyazısı: kayıtlıysa al; eksik kısımları izlerken sesi kaydedip gönder
+  var PARCA = 30;
+  function robot(g) { return fetch(ROBOT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(g) }).then(function (r) { return r.json(); }); }
+  function aiEkle(l) { aiSatirlar = aiSatirlar.concat(l).sort(function (a, b) { return a.b - b.b; }); if (altSecim === 'tr' && trKaynakIndeks() < 0) satirlar = aiSatirlar; }
+  function altyaziBaslat() {
+    if (!anahtar) return;
+    robot({ islem: 'al', k: anahtar }).then(function (j) { (j.parcalar || []).forEach(function (b) { aiParcalar[Math.floor(b / PARCA) * PARCA] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
+      .catch(function () {}).then(kayitHazirla);
+  }
+  function kayitHazirla() {
+    var yakala = v.captureStream || v.mozCaptureStream; if (!yakala || !window.MediaRecorder) { aiDurum = ''; return; }
+    var mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'].filter(function (m) { return MediaRecorder.isTypeSupported(m); })[0];
+    if (!mime) return;
+    var rec = null, basT = 0, bozuk = false, akis = null;
+    function gerek() { return altSecim === 'tr' && trKaynakIndeks() < 0 && !v.paused && !v.muted && v.volume > 0 && v.playbackRate === 1; }
+    function baslaKayit() {
+      if (rec || !gerek()) return;
+      var b = Math.floor(v.currentTime / PARCA) * PARCA; if (aiParcalar[b]) return;
+      try { akis = akis || yakala.call(v); var sesler = akis.getAudioTracks(); if (!sesler.length) return;
+        rec = new MediaRecorder(new MediaStream(sesler), { mimeType: mime, audioBitsPerSecond: 32000 }); } catch (e) { rec = null; return; }
+      basT = v.currentTime; bozuk = false; var parcalar = [], hedef = b;
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) parcalar.push(e.data); };
+      rec.onstop = function () { var r = rec; rec = null;
+        if (bozuk || v.currentTime - basT < 8) return;
+        aiParcalar[hedef] = 1; aiDurum = 'Türkçe altyazı hazırlanıyor…'; rozet();
+        var blob = new Blob(parcalar, { type: mime }), fr = new FileReader();
+        fr.onload = function () { robot({ islem: 'parca', k: anahtar, bas: Math.round(basT), mime: mime, ses: String(fr.result).split(',')[1] })
+          .then(function (j) { if (j.ok) aiEkle(j.satirlar || []); else delete aiParcalar[hedef]; aiDurum = ''; rozet(); })
+          .catch(function () { delete aiParcalar[hedef]; aiDurum = ''; rozet(); }); };
+        fr.readAsDataURL(blob); };
+      rec.start();
+    }
+    function bitir(gecersiz) { if (rec && rec.state !== 'inactive') { bozuk = bozuk || gecersiz; rec.stop(); } }
+    v.addEventListener('timeupdate', function () {
+      if (rec) { if (!gerek()) bitir(true); else if (v.currentTime - basT >= PARCA || Math.floor(v.currentTime / PARCA) * PARCA > Math.floor(basT / PARCA) * PARCA) bitir(false); }
+      else baslaKayit(); });
+    v.addEventListener('seeking', function () { bitir(true); });
+    v.addEventListener('pause', function () { bitir(v.currentTime - basT < 8); });
+    v.addEventListener('ended', function () { bitir(false); });
   }
 })();
 </script>
