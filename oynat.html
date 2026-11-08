@@ -111,12 +111,33 @@ button.dolu svg{fill:currentColor;stroke:none}
   function vmM3u8(id) { return fetch('https://vidmoly.org/embed-' + id + '.html', { credentials: 'omit' }).then(function (r) { return r.ok ? r.text() : ''; })
     .then(function (h) { var m = h.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/); return m ? m[0] : ''; }).catch(function () { return ''; }); }
   function vmDene(ids, i) { if (i >= ids.length) return Promise.resolve(''); return vmM3u8(ids[i]).then(function (u) { return u || vmDene(ids, i + 1); }); }
+  var KAPI = 'https://filmx-giris.chatbox-tk.workers.dev';
+  // başka sitenin oynatıcısı (son çare): kendi oynatıcımız çözemezse
+  function iframeGom(u) { goster(''); kutu.remove(); var f = document.createElement('iframe'); f.src = u; f.allow = 'autoplay; fullscreen; encrypted-media'; f.allowFullscreen = true;
+    f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0'; document.body.appendChild(f); }
+  // dizi82 oynatıcısı (…/player/<kimlik>): m3u8 aynı kimlikle açık sunucuda
+  var D82_SUNUCU = ['https://one.makesomthingup.click/'];
+  function d82Oyn(pu) { var id = (pu.match(/\/player\/([A-Za-z0-9_-]+)/) || [])[1]; if (!id) { iframeGom(pu); return Promise.resolve(''); }
+    function dene(i) { if (i >= D82_SUNUCU.length) { iframeGom(pu); return ''; } var u = D82_SUNUCU[i] + id + '/master.m3u8';
+      return fetch(u, { credentials: 'omit' }).then(function (r) { return r.ok ? r.text() : ''; }).catch(function () { return ''; })
+        .then(function (t) { return /#EXTM3U/.test(t) ? u : dene(i + 1); }); }
+    return dene(0); }
   var h = location.hash.slice(1), soz;
   if (h.indexOf('vm:') === 0) { var id = h.slice(3); anahtar = 'vm:' + id; soz = vmDene([id], 0).then(function (u) { if (!u) vmGom(id); return u; }); }
   else if (h.indexOf('dk:') === 0) { anahtar = h;
     soz = fetch(b64(h.slice(3))).then(function (r) { return r.json(); }).then(function (j) { var ids = (j && j.vm) || [];
       if (!ids.length) { goster('Bu bölüm şu an açılamıyor.', false); return ''; }
       return vmDene(ids, 0).then(function (u) { if (!u) vmGom(ids[0]); return u; }); }).catch(function () { goster('Bu bölüm şu an açılamıyor.', false); return ''; });
+  } else if (h.indexOf('d8:') === 0) { var pu = b64(h.slice(3)); anahtar = 'd8:' + (pu.match(/\/player\/([A-Za-z0-9_-]+)/) || [, pu])[1]; soz = d82Oyn(pu);
+  } else if (h.indexOf('d82:') === 0) { var yol = b64(h.slice(4)); anahtar = 'd82:' + yol;
+    soz = fetch(KAPI + '/d82?j=1&y=' + encodeURIComponent(yol)).then(function (r) { return r.json(); })
+      .then(function (j) { if (!j.p) { goster('Bu bölüm şu an açılamıyor.', false); return ''; } return d82Oyn(j.p); })
+      .catch(function () { iframeGom(KAPI + '/d82?y=' + encodeURIComponent(yol)); return ''; });
+  } else if (h.indexOf('zp:') === 0) { var zk = b64(h.slice(3)); anahtar = 'zp:' + zk;
+    soz = fetch(KAPI + '/zp?u=' + encodeURIComponent(zk)).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.i) { iframeGom(j.i); return ''; } if (!j.t) { iframeGom('https://oynat.' + zk); return ''; }
+      return fetch(j.t, { credentials: 'omit' }).then(function (r) { return r.json(); }).then(function (x) { if (x && x.url) return x.url; iframeGom('https://oynat.' + zk); return ''; });
+    }).catch(function () { iframeGom('https://oynat.' + zk); return ''; });
   } else { var a = ''; try { a = b64(h); } catch (e) {} anahtar = a.split('?')[0]; soz = Promise.resolve(a); }
   goster('Yükleniyor…');
   soz.then(function (adres) { if (adres) oynat(adres); });

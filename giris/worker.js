@@ -340,6 +340,7 @@ async function d82Bolum(req, env, url) {
     hedef = (html.match(/<iframe[^>]*?\ssrc="(https:\/\/[^"]+\/player\/[A-Za-z0-9_-]+)"/i) || [])[1] || '';
     if (hedef) await onbellek.put(anahtar, new Response(hedef, { headers: { 'Cache-Control': 'max-age=43200' } })).catch(() => {});
   }
+  if (url.searchParams.get('j')) return json(hedef ? { p: hedef } : { hata: 'Bu bölüm şu an açılamıyor.' }, hedef ? 200 : 404, cors(req, env));
   if (!hedef) return new Response('<p style="font:15px system-ui;color:#ddd;background:#000;margin:0;padding:24px">Bu bölüm şu an açılamıyor. Biraz sonra tekrar deneyin.</p>',
     { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   return new Response(null, { status: 302, headers: { Location: hedef, 'Cache-Control': 'no-store' } });
@@ -361,6 +362,28 @@ async function dkBolum(req, env, url, h) {
   return vm.length ? json({ vm }, 200, h) : json({ hata: 'Bu bölüm şu an açılamıyor.' }, 404, h);
 }
 
+// zipfilmizle: oynat.zipfilmizle.org/url/<kod> -> myplayersvideo -> vidara token adresi { t }. Token adresini sayfa (oynat.html)
+// kendisi çağırır (m3u8 izleyicinin IP'sine bağlı); video bu sunucudan geçmez. 12 saat önbellek.
+async function zpBolum(req, env, url, h) {
+  const kod = url.searchParams.get('u') || '';
+  if (!/^(zipfilmizle\.org|thefullhdfilmizle\.com)\/url\/[a-f0-9]{32}$/.test(kod)) return json({ hata: 'Geçersiz.' }, 400, h);
+  const onbellek = caches.default, anahtar = new Request('https://filmx-onbellek/zp/' + kod);
+  let t = await onbellek.match(anahtar).then(r => r && r.text()).catch(() => '');
+  if (!t) {
+    const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36' };
+    const a = await fetch('https://oynat.' + kod, { headers: { ...UA, Referer: 'https://www.zipfilmizle.org/' } }).then(r => r.ok ? r.text() : '').catch(() => '');
+    const ic = ((a.match(/iframe\.src\s*=\s*"([^"]+)"/) || [])[1] || '').replace(/\\//g, '/');
+    if (/^https:\/\//.test(ic)) {
+      const b = await fetch(ic, { headers: { ...UA, Referer: 'https://oynat.' + kod.split('/')[0] + '/' } }).then(r => r.ok ? r.text() : '').catch(() => '');
+      t = (b.match(/tokenUrl\s*=\s*"(https:\/\/[^"]+)"/) || [])[1] || '';
+      if (!t) t = 'i:' + ic;   // token yoksa: iç oynatıcı (iframe)
+    }
+    if (t) await onbellek.put(anahtar, new Response(t, { headers: { 'Cache-Control': 'max-age=43200' } })).catch(() => {});
+  }
+  if (!t) return json({ hata: 'Bu film şu an açılamıyor.' }, 404, h);
+  return json(t.startsWith('i:') ? { i: t.slice(2) } : { t }, 200, h);
+}
+
 export default {
   async fetch(req, env) {
     const h = cors(req, env);
@@ -368,6 +391,7 @@ export default {
     const url = new URL(req.url);
     if (req.method === 'GET' && url.pathname === '/d82') return d82Bolum(req, env, url);
     if (req.method === 'GET' && url.pathname === '/dk') return dkBolum(req, env, url, h);
+    if (req.method === 'GET' && url.pathname === '/zp') return zpBolum(req, env, url, h);
     const uc = UCLAR[req.method + ' ' + url.pathname];
     if (!uc) return json({ hata: 'Bulunamadı' }, 404, h);
     try {
