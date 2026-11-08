@@ -136,6 +136,7 @@ button.dolu svg{fill:currentColor;stroke:none}
         else goster('Bu video şu an oynatılamıyor.', false);
       });
       hls.on(Hls.Events.MANIFEST_PARSED, function () { menuKur(); devam(); });
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, function () { sesDiliSec(); menuKur(); altyaziUygula(); });
       hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, function () { kaynakAltyazi(); });
       hls.on(Hls.Events.SUBTITLE_FRAG_PROCESSED, function () { kaynakCuelar(); });
       hls.loadSource(adres); hls.attachMedia(v);
@@ -222,7 +223,14 @@ button.dolu svg{fill:currentColor;stroke:none}
   });
 
   // ---------- ayar menüsü: altyazı / kalite / hız ----------
-  var altSecim = oku('alt', 'tr');   // 'tr' (Türkçe: kaynak ya da yapay zekâ), 'kapali', 'k:<indeks>'
+  var altSecim = oku('alt', 'tr');   // kullanıcı elle seçmediyse: TR dublaj varsa kapalı, yoksa Türkçe
+  var altElle = oku('altElle', false);
+  function trSesIndeks() { var t = (hls && hls.audioTracks) || []; for (var i = 0; i < t.length; i++) if (/^(tr|tur|tür)/i.test(t[i].lang || '') || /türk|turk|dublaj/i.test(t[i].name || '')) return i; return -1; }
+  function trDublajMi() { var i = trSesIndeks(); return i >= 0 && hls.audioTrack === i; }
+  function sesDiliSec() { var i = trSesIndeks(), elle = oku('sesDil', '');
+    if (elle && hls.audioTracks.some(function (t) { return (t.lang || t.name) === elle; })) hls.audioTrack = hls.audioTracks.findIndex(function (t) { return (t.lang || t.name) === elle; });
+    else if (i >= 0) hls.audioTrack = i;
+    if (!altElle) altSecim = trDublajMi() ? 'kapali' : 'tr'; }   // 'tr' (Türkçe: kaynak ya da yapay zekâ), 'kapali', 'k:<indeks>'
   function menuKur() {
     var m = $('menu'), x = '<h4>Altyazı</h4>';
     x += '<div class="s' + (altSecim === 'kapali' ? ' sec' : '') + '" data-a="kapali">Kapalı</div>';
@@ -230,6 +238,8 @@ button.dolu svg{fill:currentColor;stroke:none}
     (hls && hls.subtitleTracks || []).forEach(function (t, i) { if (i === trKaynakIndeks()) return;
       x += '<div class="s' + (altSecim === 'k:' + i ? ' sec' : '') + '" data-a="k:' + i + '">' + (t.name || t.lang || ('Altyazı ' + (i + 1))) + '</div>'; });
     if (altSecim === 'tr' && trKaynakIndeks() < 0) x += '<div class="not">' + altNot() + '</div>';
+    if (hls && hls.audioTracks && hls.audioTracks.length > 1) { x += '<h4>Ses</h4>';
+      hls.audioTracks.forEach(function (t, i) { x += '<div class="s' + (hls.audioTrack === i ? ' sec' : '') + '" data-ses="' + i + '">' + (i === trSesIndeks() ? 'Türkçe dublaj' : (t.name || t.lang || ('Ses ' + (i + 1)))) + '</div>'; }); }
     if (hls && hls.levels && hls.levels.length > 1) {
       x += '<h4>Kalite</h4><div class="s' + (hls.autoLevelEnabled ? ' sec' : '') + '" data-q="-1">Otomatik</div>';
       hls.levels.map(function (l, i) { return { i: i, h: l.height || 0, b: l.bitrate }; }).sort(function (a, b) { return b.h - a.h || b.b - a.b; })
@@ -241,7 +251,9 @@ button.dolu svg{fill:currentColor;stroke:none}
   }
   $('bAlt').onclick = function (e) { if (e) e.stopPropagation(); menuKur(); $('menu').classList.toggle('ac'); acKontrol(); };
   $('menu').onclick = function (e) { var s = e.target.closest('.s'); if (!s) return; e.stopPropagation();
-    if (s.dataset.a) { altSecim = s.dataset.a; sakla('alt', altSecim); altyaziUygula(); }
+    if (s.dataset.a) { altSecim = s.dataset.a; altElle = true; sakla('alt', altSecim); sakla('altElle', true); altyaziUygula(); }
+    if (s.dataset.ses) { var si = +s.dataset.ses, tt = hls.audioTracks[si]; hls.audioTrack = si; sakla('sesDil', tt.lang || tt.name);
+      if (!altElle) { altSecim = trDublajMi() ? 'kapali' : 'tr'; altyaziUygula(); } }
     if (s.dataset.q) { var q = +s.dataset.q; if (q < 0) hls.currentLevel = -1; else hls.currentLevel = q; }
     if (s.dataset.h) { v.playbackRate = +s.dataset.h; sakla('hiz', v.playbackRate); }
     menuKur(); };
