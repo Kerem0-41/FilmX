@@ -148,6 +148,13 @@ button.dolu svg{fill:currentColor;stroke:none}
     .then(function (h) { var m = h.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/); return m ? m[0] : ''; }).catch(function () { return ''; }); }
   function vmDene(ids, i) { if (i >= ids.length) return Promise.resolve(''); return vmM3u8(ids[i]).then(function (u) { return u || vmDene(ids, i + 1); }); }
   var KAPI = 'https://filmx-giris.chatbox-tk.workers.dev';
+  // FilmX sayfası (üst pencere): oturum + cihaz imzası onda. Oynatıcı yalnız onun içinde çalışır.
+  var UST = null; try { UST = window.parent !== window && parent.eval('typeof KAPI !== "undefined" ? KAPI : null'); } catch (e) { UST = null; }
+  if (UST && UST.URL) KAPI = UST.URL;
+  // giriş sunucusuna imzalı GET (video bulan uçlar giriş ister)
+  function kapiGet(u) { if (!UST) return fetch(u);
+    var yol = u.indexOf(KAPI) === 0 ? u.slice(KAPI.length) : new URL(u).pathname;
+    return UST.cihazHazirla().then(function () { return UST.imzaBaslik('GET', yol); }).then(function (hd) { return fetch(u, { headers: hd }); }); }
   // başka sitenin oynatıcısı (son çare): kendi oynatıcımız çözemezse
   function iframeGom(u) { goster(''); kutu.remove(); var f = document.createElement('iframe'); f.src = u; f.allow = 'autoplay; fullscreen; encrypted-media'; f.allowFullscreen = true;
     f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0'; document.body.appendChild(f); }
@@ -159,18 +166,22 @@ button.dolu svg{fill:currentColor;stroke:none}
         .then(function (t) { return /#EXTM3U/.test(t) ? u : dene(i + 1); }); }
     return dene(0); }
   var h = location.hash.slice(1), soz;
+  // oynat.html#i:<kimlik>: asıl adres FilmX sayfasının belleğinde (FXO). Dışarıdan açılan / paylaşılan bağlantı çalışmaz.
+  if (h.indexOf('i:') === 0) { var fx = null; try { fx = parent.FXO && parent.FXO[h.slice(2)]; } catch (e) {} h = fx || ''; }
+  else h = '';
+  if (!h) { goster('Bu video yalnızca FilmX içinden açılabilir.', false); return; }
   if (h.indexOf('vm:') === 0) { var id = h.slice(3); anahtar = 'vm:' + id; soz = vmDene([id], 0).then(function (u) { if (!u) vmGom(id); return u; }); }
   else if (h.indexOf('dk:') === 0) { anahtar = h;
-    soz = fetch(b64(h.slice(3))).then(function (r) { return r.json(); }).then(function (j) { var ids = (j && j.vm) || [];
+    soz = kapiGet(b64(h.slice(3))).then(function (r) { return r.json(); }).then(function (j) { var ids = (j && j.vm) || [];
       if (!ids.length) { goster('Bu bölüm şu an açılamıyor.', false); return ''; }
       return vmDene(ids, 0).then(function (u) { if (!u) vmGom(ids[0]); return u; }); }).catch(function () { goster('Bu bölüm şu an açılamıyor.', false); return ''; });
   } else if (h.indexOf('d8:') === 0) { var pu = b64(h.slice(3)); anahtar = 'd8:' + (pu.match(/\/player\/([A-Za-z0-9_-]+)/) || [, pu])[1]; soz = d82Oyn(pu);
   } else if (h.indexOf('d82:') === 0) { var yol = b64(h.slice(4)); anahtar = 'd82:' + yol;
-    soz = fetch(KAPI + '/d82?j=1&y=' + encodeURIComponent(yol)).then(function (r) { return r.json(); })
+    soz = kapiGet(KAPI + '/d82?j=1&y=' + encodeURIComponent(yol)).then(function (r) { return r.json(); })
       .then(function (j) { if (!j.p) { goster('Bu bölüm şu an açılamıyor.', false); return ''; } return d82Oyn(j.p); })
       .catch(function () { iframeGom(KAPI + '/d82?y=' + encodeURIComponent(yol)); return ''; });
   } else if (h.indexOf('zp:') === 0) { var zk = b64(h.slice(3)); anahtar = 'zp:' + zk;
-    soz = fetch(KAPI + '/zp?u=' + encodeURIComponent(zk)).then(function (r) { return r.json(); }).then(function (j) {
+    soz = kapiGet(KAPI + '/zp?u=' + encodeURIComponent(zk)).then(function (r) { return r.json(); }).then(function (j) {
       if (j.i) { iframeGom(j.i); return ''; } if (!j.t) { iframeGom('https://oynat.' + zk); return ''; }
       return fetch(j.t, { credentials: 'omit' }).then(function (r) { return r.json(); }).then(function (x) { if (x && x.url) return x.url; iframeGom('https://oynat.' + zk); return ''; });
     }).catch(function () { iframeGom('https://oynat.' + zk); return ''; });
@@ -384,7 +395,7 @@ button.dolu svg{fill:currentColor;stroke:none}
     sonParca = hls ? hls.subtitleTrack : -1;
     rozet();
   }
-  function rozet() { var r = $('rozet'); if (altSecim === 'tr' && trKaynakIndeks() < 0 && metinIndeks() < 0 && aiDurum) { r.textContent = aiDurum; r.style.display = 'block'; } else r.style.display = 'none'; }
+  function rozet() { $('rozet').style.display = 'none'; return; var r = $('rozet'); if (altSecim === 'tr' && trKaynakIndeks() < 0 && metinIndeks() < 0 && aiDurum) { r.textContent = aiDurum; r.style.display = 'block'; } else r.style.display = 'none'; }
   v.addEventListener('timeupdate', function () { var t = v.currentTime, s = '';
     if (altSecim !== 'kapali') for (var i = 0; i < satirlar.length; i++) if (t >= satirlar[i].b && t <= satirlar[i].s) { s += (s ? '\n' : '') + satirlar[i].m; }
     if (altSpan.textContent !== s) altSpan.textContent = s; });

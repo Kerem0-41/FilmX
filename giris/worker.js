@@ -22,7 +22,7 @@ function cors(req, env) {
   return {
     'Access-Control-Allow-Origin': izinli.includes(o) ? o : (izinli[0] || 'null'),
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Zaman, X-Imza',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
@@ -65,7 +65,42 @@ async function kur(db) {
   // geçiş: bu özellikten önce girilmiş cihazlar onaylı sayılır (sadece tablo boşken çalışır)
   await db.prepare(`INSERT OR IGNORE INTO g_cihaz_izin (kullanici_id, cihaz, cihaz_ad, durum, istek)
     SELECT kullanici_id, cihaz, MAX(cihaz_ad), 'aktif', MIN(zaman) FROM g_giris WHERE cihaz IS NOT NULL AND (SELECT COUNT(*) FROM g_cihaz_izin) = 0 GROUP BY kullanici_id, cihaz`).run();
+  try { await db.prepare('ALTER TABLE g_cihaz_izin ADD COLUMN pub TEXT').run(); } catch (e) { /* sütun zaten var */ }
   kuruldu = true;
+}
+
+// ---------- cihaz anahtarı ----------
+// Her cihaz tarayıcıda dışarı ÇIKARILAMAYAN bir ECDSA anahtarı üretir (IndexedDB, extractable:false). Cihaz kimliği = açık anahtarın özeti.
+// Sunucuya giden her istek bu anahtarla imzalanır; kimliği/oturumu başka cihaza kopyalayan biri imzalayamaz.
+// IMZA_ZORUNLU tanımlıysa anahtarsız (eski APK/sayfa) cihazlar da reddedilir; tanımlı değilse yalnız anahtarı kayıtlı cihazlarda imza aranır.
+let IMZA_ZORUNLU = false;
+const b64d = s => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+function temizPub(p) { if (!p || typeof p !== 'object') return null; const x = String(p.x || ''), y = String(p.y || '');
+  return /^[A-Za-z0-9_-]{43}$/.test(x) && /^[A-Za-z0-9_-]{43}$/.test(y) ? { x, y } : null; }
+const pubKimlik = async pub => (await sha256(pub.x + '.' + pub.y)).slice(0, 40);
+async function imzaDogru(req, pubJson) {
+  const z = +req.headers.get('X-Zaman'), im = req.headers.get('X-Imza') || '';
+  if (!z || !im || Math.abs(Date.now() - z) > 12 * 3600e3) return false;   // saati kaymış cihazlar için geniş pencere
+  try { const p = JSON.parse(pubJson);
+    const key = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', x: p.x, y: p.y, ext: true }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, b64d(im), enc.encode(z + '|' + req.method + '|' + new URL(req.url).pathname));
+  } catch (e) { return false; }
+}
+// giriş/kayıtta cihaz: açık anahtar varsa kimlik ondan türetilir (uydurulamaz)
+async function cihazBelirle(v) {
+  const pub = temizPub(v.pub);
+  if (!pub) { if (IMZA_ZORUNLU) throw new Hata(400, 'Uygulamanızı güncelleyin.'); return { cihaz: temizCihaz(v.cihaz), pub: null }; }
+  const cihaz = await pubKimlik(pub);
+  if (temizCihaz(v.cihaz) !== cihaz) throw new Hata(400, 'Cihaz kimliği geçersiz.');
+  return { cihaz, pub: JSON.stringify(pub) };
+}
+async function pubKaydet(db, k, c) { if (c.cihaz && c.pub) await db.prepare('UPDATE g_cihaz_izin SET pub=? WHERE kullanici_id=? AND cihaz=? AND pub IS NULL').bind(c.pub, k.id, c.cihaz).run(); }
+// eski (anahtarsız) onaylı cihaz anahtarlı sürüme geçiyor: onayı yeni kimliğe taşı (bir kez; yönetici yeniden onaylamak zorunda kalmasın)
+async function cihazTasi(db, k, c, eski) {
+  eski = temizCihaz(eski); if (!c.pub || !eski || eski === c.cihaz) return;
+  const r = await db.prepare('SELECT pub FROM g_cihaz_izin WHERE kullanici_id=? AND cihaz=?').bind(k.id, eski).first();
+  const yeni = await db.prepare('SELECT 1 FROM g_cihaz_izin WHERE kullanici_id=? AND cihaz=?').bind(k.id, c.cihaz).first();
+  if (r && !r.pub && !yeni) await db.prepare('UPDATE g_cihaz_izin SET cihaz=?, pub=? WHERE kullanici_id=? AND cihaz=?').bind(c.cihaz, c.pub, k.id, eski).run();
 }
 
 // hız sınırı: anahtar başına pencere içinde en fazla n deneme
@@ -106,9 +141,11 @@ async function kimlik(req, db) {
   const h = req.headers.get('Authorization') || '';
   const token = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
   if (!token || token.length > 100) throw new Hata(401, 'Oturum yok.');
-  const k = await db.prepare(`SELECT k.*, o.cihaz AS _cihaz, (SELECT c.durum FROM g_cihaz_izin c WHERE c.kullanici_id = k.id AND c.cihaz = o.cihaz) AS _cihaz_durum
+  const k = await db.prepare(`SELECT k.*, o.cihaz AS _cihaz, (SELECT c.durum FROM g_cihaz_izin c WHERE c.kullanici_id = k.id AND c.cihaz = o.cihaz) AS _cihaz_durum,
+      (SELECT c.pub FROM g_cihaz_izin c WHERE c.kullanici_id = k.id AND c.cihaz = o.cihaz) AS _pub
     FROM g_oturum o JOIN g_kullanici k ON k.id = o.kullanici_id WHERE o.ozet = ? AND o.bitis > ?`).bind(await sha256(token), now()).first();
   if (!k) throw new Hata(401, 'Oturumun süresi doldu. Tekrar giriş yapın.');
+  if (k._pub ? !(await imzaDogru(req, k._pub)) : IMZA_ZORUNLU) throw new Hata(401, 'Bu cihaz doğrulanamadı. Tekrar giriş yapın.');
   k._token = token;
   return k;
 }
@@ -141,8 +178,8 @@ async function kayit(req, env, db, v) {
   const tuz = hex(rastgele(16)), ozet = await sifreOzet(sifre, tuz);
   const r = await db.prepare(`INSERT INTO g_kullanici (ad, tuz, ozet, rol, durum, olusturma) VALUES (?, ?, ?, 'musteri', 'bekliyor', ?) ON CONFLICT(ad) DO NOTHING RETURNING *`).bind(ad, tuz, ozet, now()).first();
   if (!r) throw new Hata(409, 'Bu kullanıcı adı alınmış. Başka bir ad seçin.');
-  const cihaz = temizCihaz(v.cihaz), ua = req.headers.get('User-Agent');
-  r._cihaz_durum = await cihazIzin(db, r, cihaz, ua, v.dok === true, 'aktif');
+  const c = await cihazBelirle(v), cihaz = c.cihaz, ua = req.headers.get('User-Agent');
+  r._cihaz_durum = await cihazIzin(db, r, cihaz, ua, v.dok === true, 'aktif'); await pubKaydet(db, r, c);
   const token = await oturumAc(db, r, cihaz, ua, v.dok === true);
   return { token, kullanici: durumDis(r) };
 }
@@ -161,8 +198,9 @@ async function giris(req, env, db, v) {
   }
   for (const a of anahtarlar) await sinirSifirla(db, a);
   if (k.durum === 'reddedildi') throw new Hata(403, 'Bu hesabın başvurusu kabul edilmedi.');
-  const cihaz = temizCihaz(v.cihaz), ua = req.headers.get('User-Agent');
-  k._cihaz_durum = await cihazIzin(db, k, cihaz, ua, v.dok === true, k.kurucu ? 'aktif' : 'bekliyor');
+  const c = await cihazBelirle(v), cihaz = c.cihaz, ua = req.headers.get('User-Agent');
+  await cihazTasi(db, k, c, v.eskiCihaz);
+  k._cihaz_durum = await cihazIzin(db, k, cihaz, ua, v.dok === true, k.kurucu ? 'aktif' : 'bekliyor'); await pubKaydet(db, k, c);
   if (!k.kurucu && k._cihaz_durum === 'reddedildi') throw new Hata(403, 'Bu cihazdan bu hesaba giriş izni verilmedi.');
   const token = await oturumAc(db, k, cihaz, ua, v.dok === true);
   return { token, kullanici: durumDis(k) };
@@ -172,7 +210,13 @@ async function ben(req, env, db) {
   const k = await kimlik(req, db);
   await db.prepare('UPDATE g_kullanici SET son_gorulme=? WHERE id=?').bind(now(), k.id).run();
   const cevap = { kullanici: durumDis(k) };
-  if (girebilir(k)) cevap.anahtar = env.ICERIK_ANAHTARI;   // katalog çözme anahtarı: yalnız onaylı + açık hesaba
+  if (girebilir(k)) {   // katalog çözme anahtarı: yalnız onaylı + açık hesaba. Sayfa sürümüne özel: anahtar = HMAC(ana anahtar, sürüm)
+    const surum = String(new URL(req.url).searchParams.get('s') || '');
+    if (/^[a-f0-9]{16,64}$/.test(surum)) {
+      const ana = await crypto.subtle.importKey('raw', b64d(env.ICERIK_ANAHTARI), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      cevap.anahtar = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC', ana, enc.encode('filmx-icerik:' + surum)))));
+    } else if (!env.ANA_ANAHTAR_KAPALI) cevap.anahtar = env.ICERIK_ANAHTARI;   // eski sayfa/APK (sürümsüz); APK güncellenince kapatılır
+  }
   return cevap;
 }
 
@@ -389,6 +433,11 @@ export default {
     const h = cors(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
     const url = new URL(req.url);
+    IMZA_ZORUNLU = !!env.IMZA_ZORUNLU;
+    if (req.method === 'GET' && ['/d82', '/dk', '/zp'].includes(url.pathname) && (IMZA_ZORUNLU || req.headers.get('Authorization'))) {
+      try { await kur(env.filmx_db); const k = await kimlik(req, env.filmx_db); if (!girebilir(k)) throw new Hata(403, 'Giriş gerekli.'); }
+      catch (e) { return json({ hata: e.message || 'Giriş gerekli.' }, e.kod || 401, h); }
+    }
     if (req.method === 'GET' && url.pathname === '/d82') return d82Bolum(req, env, url);
     if (req.method === 'GET' && url.pathname === '/dk') return dkBolum(req, env, url, h);
     if (req.method === 'GET' && url.pathname === '/zp') return zpBolum(req, env, url, h);
