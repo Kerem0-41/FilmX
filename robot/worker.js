@@ -136,7 +136,9 @@ async function denemeFazla(env, ip, yanlis) {   // 15 dk içinde 8 yanlış dene
 // ---------- Türkçe altyazı (oynat.html) ----------
 // Oynatıcı videoyu izlerken sesi ~30 sn'lik parçalar halinde yollar (video sunucudan geçmez). Gemini yazıya döker + Türkçeye çevirir,
 // D1'e kaydedilir; sonraki izleyiciler hazır altyazıyı alır. k = videonun kimliği (oynatıcı adresinden türetilir).
-const SES_MODELLER = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash'];
+const SES_MODELLER = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+// hakkı biten (429) ya da olmayan (404) sürüm bir süre atlanır, her istekte boşuna denenmez: model -> tekrar denenebileceği zaman
+const SES_DINLEN = new Map();
 const ALT_TALIMAT = `Bu bir film/dizi ses parçası. Konuşulan her cümleyi yazıya dök ve TÜRKÇE'ye çevir (zaten Türkçeyse olduğu gibi yaz).
 Müzik/sessizlik için bir şey yazma. Zamanlar parçanın başından itibaren saniye cinsinden olsun.
 SADECE şu JSON'u ver: [{"b":1.2,"s":3.4,"m":"Türkçe cümle"}]  (boşsa [])`;
@@ -151,17 +153,18 @@ async function altyaziAl(env, g) {
 }
 async function altyaziParca(env, g) {
   const k = String(g.k || '').slice(0, 300), bas = Math.max(0, Math.round(+g.bas || 0)), ses = String(g.ses || ''), mime = String(g.mime || 'audio/webm').split(';')[0];
-  if (!k || !ses || ses.length > 3_000_000 || !env.filmx_db) return { ok: false };
+  if (!k || !ses || ses.length > 8_000_000 || !env.filmx_db) return { ok: false };
   await altTablo(env);
   const var_ = await env.filmx_db.prepare('SELECT veri FROM altyazi WHERE k = ? AND bas = ?').bind(k, bas).first();
   if (var_) return { ok: true, satirlar: JSON.parse(var_.veri) };
-  for (const model of SES_MODELLER) {
+  const simdi = Date.now(), sira = SES_MODELLER.filter(m => !(SES_DINLEN.get(m) > simdi));
+  for (const model of (sira.length ? sira : SES_MODELLER)) {
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_KEY },
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ inlineData: { mimeType: mime, data: ses } }, { text: ALT_TALIMAT }] }],
           generationConfig: { temperature: 0.2, maxOutputTokens: 4000, responseMimeType: 'application/json' } }) });
-      if (!r.ok) continue;
+      if (!r.ok) { if (r.status === 429) SES_DINLEN.set(model, Date.now() + 10 * 60000); else if (r.status === 404) SES_DINLEN.set(model, Date.now() + 24 * 3600000); continue; }
       const j = await r.json();
       const t = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join('').replace(/```json|```/g, '');
       const a = t.indexOf('['), b = t.lastIndexOf(']'); if (a < 0) continue;
