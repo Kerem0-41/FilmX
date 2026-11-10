@@ -203,17 +203,23 @@ async function duzelt(satirlar, env) {
   return l;
 }
 
-async function altyaziAl(env, g) {
+async function altyaziAl(env, g, ctx) {
   const k = String(g.k || '').slice(0, 300); if (!k || !env.filmx_db) return { satirlar: [], parcalar: [] };
   await altTablo(env);
   const r = await env.filmx_db.prepare('SELECT bas, veri FROM altyazi WHERE k = ? ORDER BY bas').bind(k).all();
-  const satirlar = [], parcalar = [];
+  const satirlar = [], parcalar = [], bozuk = [];
   for (const x of r.results || []) {
-    parcalar.push(x.bas);
     let l = []; try { l = JSON.parse(x.veri); } catch (e) {}
-    if (!turkceMi(l)) { l = await duzelt(l, env); if (turkceMi(l)) await env.filmx_db.prepare('UPDATE altyazi SET veri = ? WHERE k = ? AND bas = ?').bind(JSON.stringify(l), k, x.bas).run(); }   // eski İngilizce kayıt: bir kez düzelt
-    satirlar.push(...l);
+    if (!turkceMi(l)) { bozuk.push({ bas: x.bas, l }); continue; }   // İngilizce kalmış eski kayıt: bekletmeden arkada düzeltilir
+    parcalar.push(x.bas); satirlar.push(...l);
   }
+  if (bozuk.length && ctx) ctx.waitUntil((async () => {
+    for (const b of bozuk.slice(0, 20)) {
+      const l = await duzelt(b.l, env);
+      if (turkceMi(l)) await env.filmx_db.prepare('UPDATE altyazi SET veri = ? WHERE k = ? AND bas = ?').bind(JSON.stringify(l), k, b.bas).run();
+      else await env.filmx_db.prepare('DELETE FROM altyazi WHERE k = ? AND bas = ?').bind(k, b.bas).run();   // düzelmediyse silinir, yeniden hazırlanır
+    }
+  })());
   return { satirlar, parcalar };
 }
 async function altyaziParca(env, g) {
@@ -251,7 +257,7 @@ export default {
     const ip = req.headers.get('CF-Connecting-IP') || 'yerel';
     if (new URL(req.url).pathname === '/altyazi') {
       let a; try { a = await req.json(); } catch (e) { return json({ hata: 'geçersiz istek' }, 400, h); }
-      if (a.islem === 'al') return json(await altyaziAl(env, a), 200, h);
+      if (a.islem === 'al') return json(await altyaziAl(env, a, ctx), 200, h);
       if (a.islem === 'parca') return json(await altyaziParca(env, a), 200, h);
       if (a.islem === 'cevir') return json(await metinCevir(env, a, ctx), 200, h);
       return json({ hata: 'bilinmeyen' }, 400, h);

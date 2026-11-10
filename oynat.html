@@ -57,6 +57,11 @@ button.dolu svg{fill:currentColor;stroke:none}
 #menu .s.h{padding:8px 0;text-align:center;border:1px solid #333;border-radius:8px}
 #menu .s.h.sec{background:var(--k);border-color:var(--k)}
 #menu .s.h.sec::before{display:none}
+#menu{position:absolute}#menu .kapat{position:absolute;top:6px;right:6px;padding:4px;border-radius:50%;z-index:1}#menu .kapat svg{width:18px;height:18px;stroke-width:2.4}
+#sonraki{position:absolute;right:20px;bottom:calc(96px + env(safe-area-inset-bottom));display:none;gap:10px;align-items:center;background:#fff;color:#000;font-weight:700;font-size:16px;padding:12px 20px;border-radius:8px;box-shadow:0 8px 30px #000a;z-index:3}
+#sonraki:hover{background:#ddd}#sonraki svg{width:22px;height:22px;fill:#000;stroke:#000}
+#sonraki.goster{display:flex}
+@media (max-width:640px){#sonraki{right:10px;bottom:calc(56px + env(safe-area-inset-bottom));font-size:13px;padding:8px 12px}#sonraki svg{width:16px;height:16px}}
 #menu .not{padding:0 16px 8px 36px;color:#888;font-size:12px;line-height:1.4}
 #orta{position:absolute;top:50%;left:50%;width:84px;height:84px;margin:-42px;border-radius:50%;background:#0008;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s}
 #orta.goster{opacity:1;transform:scale(1.1)}
@@ -119,6 +124,7 @@ button.dolu svg{fill:currentColor;stroke:none}
     </div>
   </div>
   <div id="menu"></div>
+  <button id="sonraki"><span>Sonraki bölüm</span><svg viewBox="0 0 24 24"><path d="M6 5v14l9-7z"/><path d="M18 5v14"/></svg></button>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script>
@@ -203,6 +209,21 @@ button.dolu svg{fill:currentColor;stroke:none}
   function devam() { var t = oku('t_' + anahtar, 0); if (t > 30 && (!v.duration || t < v.duration - 60)) v.currentTime = t;
     var p = v.play(); if (p && p.catch) p.catch(function () { v.muted = true; v.play().catch(function () {}); sesCiz(); }); }
   setInterval(function () { if (!v.paused && v.currentTime > 0) sakla('t_' + anahtar, Math.floor(v.currentTime)); }, 5000);
+
+  // ---------- sonraki bölüm: dizi sayfasındaki (üst pencere) bölüm listesinde aktif olanın bir sonrakisi ----------
+  // sezonun son bölümündeyse sonraki sezonun 1. bölümü (DZ.grup: sezon sekmeleri sırasıyla)
+  function sonrakiBolum() { try { var DZ = parent.eval('typeof DZ !== "undefined" ? DZ : null'); if (!DZ || !DZ.grup || !DZ.aktif) return null;
+    for (var g = 0; g < DZ.grup.length; g++) { var i = DZ.grup[g].l.findIndex(function (x) { return x.s === DZ.aktif; }); if (i < 0) continue;
+      if (i + 1 < DZ.grup[g].l.length) return { DZ: DZ, g: g, m: DZ.grup[g].l[i + 1] };
+      return g + 1 < DZ.grup.length && DZ.grup[g + 1].l.length ? { DZ: DZ, g: g + 1, m: DZ.grup[g + 1].l[0], yeniSezon: true } : null; }
+    return null; } catch (e) { return null; } }
+  v.addEventListener('timeupdate', function () { var d = v.duration; if (!d || !isFinite(d)) return;
+    var goster = d - v.currentTime <= 30 && !!sonrakiBolum(); $('sonraki').classList.toggle('goster', goster); });
+  v.addEventListener('ended', function () { if (sonrakiBolum()) { $('sonraki').classList.add('goster'); kutu.classList.add('acik'); } });
+  $('sonraki').onclick = function (e) { e.stopPropagation(); var n = sonrakiBolum(); if (!n) return;
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (x) {}
+    if (n.DZ.gi !== n.g && n.DZ.grupSec) n.DZ.grupSec(n.g); n.DZ.oynat(n.m.s); };
+  v.addEventListener('loadedmetadata', function () { var n = sonrakiBolum(); $('sonraki').querySelector('span').textContent = n && n.yeniSezon ? 'Sonraki sezon' : 'Sonraki bölüm'; });
 
   // ---------- kontroller ----------
   var gizleZ;
@@ -289,10 +310,9 @@ button.dolu svg{fill:currentColor;stroke:none}
     var m = $('menu'), x = '';
     if (menuTur === 'alt') { x += '<h4>Altyazı</h4>';
     x += '<div class="s' + (altSecim === 'kapali' ? ' sec' : '') + '" data-a="kapali">Kapalı</div>';
-    x += '<div class="s' + (altSecim === 'tr' ? ' sec' : '') + '" data-a="tr">Türkçe' + (trKaynakIndeks() >= 0 ? '' : metinIndeks() >= 0 ? ' (çeviri)' : ' (otomatik)') + '</div>';
+    x += '<div class="s' + (altSecim === 'tr' ? ' sec' : '') + '" data-a="tr">Türkçe</div>';
     (hls && hls.subtitleTracks || []).forEach(function (t, i) { if (i === trKaynakIndeks()) return;
       x += '<div class="s' + (altSecim === 'k:' + i ? ' sec' : '') + '" data-a="k:' + i + '">' + (t.name || t.lang || ('Altyazı ' + (i + 1))) + '</div>'; });
-    if (altSecim === 'tr' && trKaynakIndeks() < 0) x += '<div class="not">' + altNot() + '</div>';
     if (hls && hls.audioTracks && hls.audioTracks.length > 1) { x += '<h4>Ses</h4>';
       hls.audioTracks.forEach(function (t, i) { x += '<div class="s' + (hls.audioTrack === i ? ' sec' : '') + '" data-ses="' + i + '">' + (i === trSesIndeks() ? 'Türkçe dublaj' : (t.name || t.lang || ('Ses ' + (i + 1)))) + '</div>'; }); }
     }
@@ -306,14 +326,14 @@ button.dolu svg{fill:currentColor;stroke:none}
     x += '<div class="hizlar">'; [0.5, 0.75, 1, 1.25, 1.5, 2].forEach(function (r) { x += '<div class="s h' + (v.playbackRate === r ? ' sec' : '') + '" data-h="' + r + '">' + r + 'x</div>'; }); x += '</div>';
     if (!hls || !hls.levels || hls.levels.length < 2) x = '<h4>Kalite</h4><div class="not" style="padding-left:16px">Bu videonun tek kalitesi var.</div>' + x;
     }
-    m.innerHTML = x;
+    m.innerHTML = '<button class="kapat" title="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>' + x;
   }
   var menuTur = 'alt';
   function menuAc(tur, e) { if (e) e.stopPropagation(); var m = $('menu'), acik = m.classList.contains('ac');
     if (acik && menuTur === tur) m.classList.remove('ac'); else { menuTur = tur; menuKur(); m.classList.add('ac'); } acKontrol(); }
   $('bAlt').onclick = function (e) { menuAc('alt', e); };
   $('bAyar').onclick = function (e) { menuAc('ayar', e); };
-  $('menu').onclick = function (e) { var s = e.target.closest('.s'); if (!s) return; e.stopPropagation();
+  $('menu').onclick = function (e) { if (e.target.closest('.kapat')) { e.stopPropagation(); $('menu').classList.remove('ac'); return; } var s = e.target.closest('.s'); if (!s) return; e.stopPropagation();
     if (s.dataset.a) { altSecim = s.dataset.a; altElle = true; sakla('alt', altSecim); sakla('altElle', true); altyaziUygula(); }
     if (s.dataset.ses) { var si = +s.dataset.ses, tt = hls.audioTracks[si]; hls.audioTrack = si; sakla('sesDil', tt.lang || tt.name);
       if (!altElle) { altSecim = trDublajMi() ? 'kapali' : 'tr'; altyaziUygula(); } }
@@ -379,7 +399,8 @@ button.dolu svg{fill:currentColor;stroke:none}
   function altyaziBaslat() {
     if (!anahtar) return;
     robot({ islem: 'al', k: anahtar }).then(function (j) { (j.parcalar || []).forEach(function (b) { aiParcalar[Math.floor(b / PARCA) * PARCA] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
-      .catch(function () {}).then(ondenBekle);
+      .catch(function () {});
+    ondenBekle();
   }
   // ---- önden hazırlama: videoya basınca filmin sesi (yalnız ses) parça parça indirilir, Gemini'ye gider; izlemeyi beklemez ----
   function ondenBekle() { var n = 0; (function bak() { if (hls && hls.levels && hls.levels.length) onden().catch(function () { kayitHazirla(); });
