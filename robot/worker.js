@@ -182,6 +182,20 @@ async function geminiCevir(satirlar, env) {
   }
   return satirlar;
 }
+// kaynağın yazılı altyazısı (ör. İngilizce) -> Türkçe. Ses yok, yalnız yazı. Aynı satırlar 30 gün önbellekte.
+async function metinCevir(env, g, ctx) {
+  const l = (Array.isArray(g.satirlar) ? g.satirlar : []).slice(0, 100).map(x => String(x || '').slice(0, 300));
+  if (!l.length) return { ceviri: [] };
+  const ozet = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(l)));
+  const anahtar = new Request('https://filmx-robot.onbellek/cevir/' + [...new Uint8Array(ozet)].map(b => b.toString(16).padStart(2, '0')).join(''));
+  const c = await caches.default.match(anahtar); if (c) return await c.json();
+  const satirlar = l.map(m => ({ m }));
+  let son = satirlar; try { son = await turkceyeCevir(satirlar); } catch (e) {}
+  if (son === satirlar || son.every((x, i) => x.m === l[i])) son = await geminiCevir(satirlar, env);
+  const cevap = { ceviri: son.map(x => x.m) };
+  if (son !== satirlar) ctx.waitUntil(caches.default.put(anahtar, new Response(JSON.stringify(cevap), { headers: { 'Cache-Control': 'max-age=2592000' } })));
+  return cevap;
+}
 async function duzelt(satirlar, env) {
   if (turkceMi(satirlar)) return satirlar;
   let l = satirlar; try { l = await turkceyeCevir(satirlar); } catch (e) {}
@@ -239,6 +253,7 @@ export default {
       let a; try { a = await req.json(); } catch (e) { return json({ hata: 'geçersiz istek' }, 400, h); }
       if (a.islem === 'al') return json(await altyaziAl(env, a), 200, h);
       if (a.islem === 'parca') return json(await altyaziParca(env, a), 200, h);
+      if (a.islem === 'cevir') return json(await metinCevir(env, a, ctx), 200, h);
       return json({ hata: 'bilinmeyen' }, 400, h);
     }
     if (sinirAsildi(ip)) return json({ cevap: 'Biraz hızlı gidiyoruz 🙂 Bir dakika sonra tekrar sorar mısın?', oneriler: [], kategori: '' }, 200, h);
