@@ -139,16 +139,67 @@ async function denemeFazla(env, ip, yanlis) {   // 15 dk içinde 8 yanlış dene
 const SES_MODELLER = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
 // hakkı biten (429) ya da olmayan (404) sürüm bir süre atlanır, her istekte boşuna denenmez: model -> tekrar denenebileceği zaman
 const SES_DINLEN = new Map();
-const ALT_TALIMAT = `Bu bir film/dizi ses parçası. Konuşulan her cümleyi yazıya dök ve TÜRKÇE'ye çevir (zaten Türkçeyse olduğu gibi yaz).
-Müzik/sessizlik için bir şey yazma. Zamanlar parçanın başından itibaren saniye cinsinden olsun.
+const ALT_TALIMAT = `Bu bir film/dizi ses parçası. Görevin: Türkçe altyazı üretmek.
+Konuşulan her cümleyi dinle ve TÜRKÇE'ye ÇEVİREREK yaz. Konuşma İngilizce ya da başka bir dildeyse ASLA o dilde yazma, mutlaka Türkçe çevirisini yaz.
+Konuşma zaten Türkçeyse olduğu gibi yaz. Müzik/sessizlik için bir şey yazma. Zamanlar parçanın başından itibaren saniye cinsinden olsun.
 SADECE şu JSON'u ver: [{"b":1.2,"s":3.4,"m":"Türkçe cümle"}]  (boşsa [])`;
 async function altTablo(env) { await env.filmx_db.prepare('CREATE TABLE IF NOT EXISTS altyazi (k TEXT, bas INTEGER, veri TEXT, PRIMARY KEY (k, bas))').run(); }
+
+// Gemini bazen çevirmeden (İngilizce) yazıyor: satırlar Türkçe değilse Google Translate ile çevrilir
+const TR_HARF = /[çğıöşüÇĞİÖŞÜ]/, TR_KELIME = /\b(bir|ve|bu|ne|ben|sen|evet|hayır|değil|için|çok|var|yok|mi|mı|mu|mü|da|de|ki|şey|tamam|neden|nasıl)\b/i;
+const EN_KELIME = /\b(the|you|is|are|and|what|i'm|don't|it's|that|this|was|have|your|not|with|of|to|me|my|we|he|she|they|yes|no|okay|oh)\b/i;
+function turkceMi(satirlar) {
+  if (!satirlar.length) return true;
+  let tr = 0, en = 0;
+  for (const x of satirlar) { if (TR_HARF.test(x.m) || TR_KELIME.test(x.m)) tr++; else if (EN_KELIME.test(x.m)) en++; }
+  return en <= tr;
+}
+async function turkceyeCevir(satirlar) {
+  const AYRAC = '\n';   // satırlar tek istekte, sırası korunarak çevrilir
+  const metin = satirlar.map(x => x.m.replace(/\n/g, ' ')).join(AYRAC);
+  const r = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=tr&dt=t&q=' + encodeURIComponent(metin));
+  if (!r.ok) return satirlar;
+  const j = await r.json();
+  const cikti = (j[0] || []).map(p => p[0] || '').join('').split(AYRAC);
+  if (cikti.length !== satirlar.length) return satirlar;
+  return satirlar.map((x, i) => ({ ...x, m: cikti[i].trim() || x.m }));
+}
+// yedek: Google Translate engellerse Gemini'nin yazı modeli çevirir (yalnız yazı; ses yok, çok ucuz)
+async function geminiCevir(satirlar, env) {
+  const metin = JSON.stringify(satirlar.map(x => x.m));
+  for (const model of ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.5-flash']) {
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_KEY },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Bu film altyazı satırlarını Türkçeye çevir. Aynı sırada, aynı sayıda, SADECE JSON dizi ver:\n' + metin }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 4000, responseMimeType: 'application/json' } }) });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const t = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join('');
+      const c = JSON.parse(t.slice(t.indexOf('['), t.lastIndexOf(']') + 1));
+      if (Array.isArray(c) && c.length === satirlar.length) return satirlar.map((x, i) => ({ ...x, m: String(c[i] || x.m).slice(0, 300) }));
+    } catch (e) { /* sıradaki model */ }
+  }
+  return satirlar;
+}
+async function duzelt(satirlar, env) {
+  if (turkceMi(satirlar)) return satirlar;
+  let l = satirlar; try { l = await turkceyeCevir(satirlar); } catch (e) {}
+  if (!turkceMi(l) && env) l = await geminiCevir(satirlar, env);
+  return l;
+}
+
 async function altyaziAl(env, g) {
   const k = String(g.k || '').slice(0, 300); if (!k || !env.filmx_db) return { satirlar: [], parcalar: [] };
   await altTablo(env);
   const r = await env.filmx_db.prepare('SELECT bas, veri FROM altyazi WHERE k = ? ORDER BY bas').bind(k).all();
   const satirlar = [], parcalar = [];
-  for (const x of r.results || []) { parcalar.push(x.bas); try { satirlar.push(...JSON.parse(x.veri)); } catch (e) {} }
+  for (const x of r.results || []) {
+    parcalar.push(x.bas);
+    let l = []; try { l = JSON.parse(x.veri); } catch (e) {}
+    if (!turkceMi(l)) { l = await duzelt(l, env); if (turkceMi(l)) await env.filmx_db.prepare('UPDATE altyazi SET veri = ? WHERE k = ? AND bas = ?').bind(JSON.stringify(l), k, x.bas).run(); }   // eski İngilizce kayıt: bir kez düzelt
+    satirlar.push(...l);
+  }
   return { satirlar, parcalar };
 }
 async function altyaziParca(env, g) {
@@ -168,7 +219,7 @@ async function altyaziParca(env, g) {
       const j = await r.json();
       const t = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join('').replace(/```json|```/g, '');
       const a = t.indexOf('['), b = t.lastIndexOf(']'); if (a < 0) continue;
-      const satirlar = JSON.parse(t.slice(a, b + 1)).map(x => ({ b: +(bas + (+x.b || 0)).toFixed(2), s: +(bas + (+x.s || (+x.b || 0) + 2)).toFixed(2), m: String(x.m || '').slice(0, 300) })).filter(x => x.m);
+      const satirlar = await duzelt(JSON.parse(t.slice(a, b + 1)).map(x => ({ b: +(bas + (+x.b || 0)).toFixed(2), s: +(bas + (+x.s || (+x.b || 0) + 2)).toFixed(2), m: String(x.m || '').slice(0, 300) })).filter(x => x.m), env);
       await env.filmx_db.prepare('INSERT OR REPLACE INTO altyazi (k, bas, veri) VALUES (?, ?, ?)').bind(k, bas, JSON.stringify(satirlar)).run();
       return { ok: true, satirlar };
     } catch (e) { /* sıradaki model */ }
