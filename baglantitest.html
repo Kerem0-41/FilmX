@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Bağlantı Testi</title>
+<style>
+body{margin:0;padding:16px;background:#0b0d13;color:#e8eaf0;font:15px system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px}p{color:#9aa3b5;margin:0 0 14px;font-size:13px}
+.s{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;margin:6px 0;border-radius:10px;background:#151925;font-size:13px}
+.s b{font-weight:600}.ok{color:#5ee08a}.no{color:#ff6b6b}.bk{color:#f5c518}
+button{margin-top:12px;width:100%;padding:14px;border:0;border-radius:12px;background:#e50914;color:#fff;font-weight:700;font-size:16px}
+</style></head><body>
+<h1>FilmX bağlantı testi</h1><p id="o"></p>
+<div id="l"></div><button onclick="calis()">Tekrar test et</button>
+<script>
+const ADR={ana:'https://filmx-giris.chatbox-tk.workers.dev',yedek:'https://filmx-baglanti.pages.dev/g'};
+const TEST=[
+  ['ana','basit','Ana sunucu · basit istek'],
+  ['ana','baslik','Ana sunucu · güvenlik başlıklı (ön kontrol)'],
+  ['yedek','basit','Yedek sunucu · basit istek'],
+  ['yedek','baslik','Yedek sunucu · güvenlik başlıklı (ön kontrol)'],
+];
+document.getElementById('o').textContent='Sayfa adresi: '+location.origin+' · '+(navigator.connection&&navigator.connection.effectiveType||'');
+async function bir(adr,tur){const t0=performance.now();
+  const o={method:'GET',cache:'no-store',signal:AbortSignal.timeout?AbortSignal.timeout(30000):undefined};
+  if(tur==='baslik')o.headers={'X-Zaman':String(Date.now()),'X-Imza':'test'};
+  try{const r=await fetch(ADR[adr]+'/ben',o);await r.text();return {ok:true,ms:Math.round(performance.now()-t0),k:r.status}}
+  catch(e){return {ok:false,ms:Math.round(performance.now()-t0),k:e.name==='TimeoutError'?'zaman aşımı':(e.name+': '+e.message)}}}
+async function calis(){const l=document.getElementById('l');l.innerHTML='';
+  for(const [a,t,ad] of TEST){const d=document.createElement('div');d.className='s';d.innerHTML='<b>'+ad+'</b><span class="bk">bekleniyor…</span>';l.appendChild(d);
+    const r=await bir(a,t);d.lastChild.className=r.ok?'ok':'no';d.lastChild.textContent=(r.ok?'çalışıyor ('+r.k+')':r.k)+' · '+(r.ms/1000).toFixed(1)+' sn'}}
+calis();
+</script></body></html>
