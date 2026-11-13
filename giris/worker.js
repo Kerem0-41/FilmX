@@ -428,19 +428,33 @@ async function zpBolum(req, env, url, h) {
   return json(t.startsWith('i:') ? { i: t.slice(2) } : { t }, 200, h);
 }
 
+// ok.ru: videoPlayerMetadata -> { hls, mp4:[{n,u}] }. Adresler isteği yapan IP'ye imzalı olabilir: önbelleğe alınmaz,
+// oynat.html denemezse iframe'e düşer. Video bu sunucudan geçmez.
+async function okBolum(req, env, url, h) {
+  const id = url.searchParams.get('id') || '';
+  if (!/^d{6,20}$/.test(id)) return json({ hata: 'Geçersiz.' }, 400, h);
+  const j = await fetch('https://ok.ru/dk?cmd=videoPlayerMetadata&mid=' + id, { method: 'POST', headers: { 'User-Agent': req.headers.get('User-Agent') || 'Mozilla/5.0' } })
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!j || !j.videos) return json({ hata: 'Bu video şu an açılamıyor.' }, 404, h);
+  const sira = ['full', 'quad', 'hd', 'sd', 'low', 'lowest', 'mobile'];
+  const mp4 = j.videos.filter(v => v && String(v.url || '').startsWith('https://')).sort((a, b) => sira.indexOf(a.name) - sira.indexOf(b.name)).map(v => ({ n: v.name, u: v.url }));
+  return json({ hls: j.hlsManifestUrl || '', mp4 }, 200, h);
+}
+
 export default {
   async fetch(req, env) {
     const h = cors(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
     const url = new URL(req.url);
     IMZA_ZORUNLU = !!env.IMZA_ZORUNLU;
-    if (req.method === 'GET' && ['/d82', '/dk', '/zp'].includes(url.pathname) && (IMZA_ZORUNLU || req.headers.get('Authorization'))) {
+    if (req.method === 'GET' && ['/d82', '/dk', '/zp', '/ok'].includes(url.pathname) && (IMZA_ZORUNLU || req.headers.get('Authorization'))) {
       try { await kur(env.filmx_db); const k = await kimlik(req, env.filmx_db); if (!girebilir(k)) throw new Hata(403, 'Giriş gerekli.'); }
       catch (e) { return json({ hata: e.message || 'Giriş gerekli.' }, e.kod || 401, h); }
     }
     if (req.method === 'GET' && url.pathname === '/d82') return d82Bolum(req, env, url);
     if (req.method === 'GET' && url.pathname === '/dk') return dkBolum(req, env, url, h);
     if (req.method === 'GET' && url.pathname === '/zp') return zpBolum(req, env, url, h);
+    if (req.method === 'GET' && url.pathname === '/ok') return okBolum(req, env, url, h);
     const uc = UCLAR[req.method + ' ' + url.pathname];
     if (!uc) return json({ hata: 'Bulunamadı' }, 404, h);
     try {

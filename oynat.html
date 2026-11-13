@@ -21,7 +21,8 @@ video{width:100%;height:100%;display:block;background:#000}
 @keyframes d{to{transform:rotate(360deg)}}
 #alt{position:absolute;left:0;right:0;bottom:6%;display:flex;justify-content:center;pointer-events:none;padding:0 6%;transition:bottom .25s}
 #kutu.acik #alt{bottom:calc(92px + env(safe-area-inset-bottom))}
-#alt span{background:rgba(0,0,0,.72);padding:4px 12px;border-radius:6px;font-size:clamp(16px,2.6vw,30px);line-height:1.35;text-align:center;white-space:pre-line;text-shadow:0 1px 2px #000}
+#alt span{max-width:min(92%,1100px);padding:0;font-family:Arial,"Helvetica Neue",Helvetica,sans-serif;font-weight:700;color:#fff;font-size:clamp(18px,3.4vw,40px);line-height:1.22;letter-spacing:.2px;text-align:center;white-space:pre-line;text-wrap:balance;
+  -webkit-text-stroke:.09em #000;paint-order:stroke fill;text-shadow:0 0 3px #000,0 2px 4px rgba(0,0,0,.9)}   /* kutusuz, kalın beyaz + siyah kontur (TV altyazısı) */
 #alt span:empty{display:none}
 #ust,#alts{position:absolute;left:0;right:0;opacity:0;transition:opacity .25s;pointer-events:none}
 #kutu.acik #ust,#kutu.acik #alts{opacity:1;pointer-events:auto}
@@ -42,6 +43,9 @@ button{background:none;border:0;color:var(--y);padding:8px;border-radius:8px;cur
 button:hover{background:rgba(255,255,255,.1)}
 button svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 button.dolu svg{fill:currentColor;stroke:none}
+#bOyna.gecis svg{animation:oyGecis .32s cubic-bezier(.3,1.5,.5,1)}
+@keyframes oyGecis{0%{transform:scale(.4) rotate(-90deg);opacity:.2}100%{transform:none;opacity:1}}
+#orta.goster svg{animation:oyGecis .32s cubic-bezier(.3,1.5,.5,1)}
 #sure{font-variant-numeric:tabular-nums;color:var(--g);margin-left:6px;font-size:14px;white-space:nowrap}
 .bos{flex:1}
 #ses{width:90px;accent-color:var(--k)}
@@ -185,6 +189,11 @@ button.dolu svg{fill:currentColor;stroke:none}
       if (j.i) { iframeGom(j.i); return ''; } if (!j.t) { iframeGom('https://oynat.' + zk); return ''; }
       return fetch(j.t, { credentials: 'omit' }).then(function (r) { return r.json(); }).then(function (x) { if (x && x.url) return x.url; iframeGom('https://oynat.' + zk); return ''; });
     }).catch(function () { iframeGom('https://oynat.' + zk); return ''; });
+  } else if (h.indexOf('ok:') === 0) { var oid = h.slice(3); anahtar = 'ok:' + oid;   // ok.ru: en yüksek kalite mp4 (<video> Origin göndermez, CORS gerekmez)
+    soz = kapiGet(KAPI + '/ok?id=' + oid).then(function (r) { return r.json(); }).then(function (j) { var m = (j && j.mp4) || [];
+      if (!m.length) { iframeGom('https://ok.ru/videoembed/' + oid); return ''; }
+      v.addEventListener('error', function () { if (!v.dataset.okDust) { v.dataset.okDust = 1; iframeGom('https://ok.ru/videoembed/' + oid); } });
+      return m[0].u + '#.mp4'; }).catch(function () { iframeGom('https://ok.ru/videoembed/' + oid); return ''; });
   } else { var a = ''; try { a = b64(h); } catch (e) {} anahtar = a.split('?')[0]; soz = Promise.resolve(a); }
   goster('Yükleniyor…');
   soz.then(function (adres) { if (adres) oynat(adres); });
@@ -244,7 +253,9 @@ button.dolu svg{fill:currentColor;stroke:none}
   function oynaDur() { if (v.paused) v.play(); else v.pause(); }
   function ortaGoster(oyn) { var o = $('orta'); o.querySelector('svg').innerHTML = oyn ? '<path d="M8 5v14l11-7z"/>' : '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
     o.classList.add('goster'); setTimeout(function () { o.classList.remove('goster'); }, 450); }
-  function oynaCiz() { $('bOyna').querySelector('svg').innerHTML = v.paused ? '<path d="M8 5v14l11-7z"/>' : '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'; }
+  // oynat/durdur simgesi: değişirken küçülüp dönerek geçer
+  function oynaCiz() { var b = $('bOyna'), s = b.querySelector('svg'), yeni = v.paused ? '<path d="M8 5v14l11-7z"/>' : '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+    if (s.innerHTML === yeni) return; s.innerHTML = yeni; b.classList.remove('gecis'); void b.offsetWidth; b.classList.add('gecis'); }
   v.addEventListener('play', function () { oynaCiz(); acKontrol(); });
   v.addEventListener('pause', function () { oynaCiz(); acKontrol(); kutu.classList.add('acik'); });
   $('bOyna').onclick = oynaDur;
@@ -255,14 +266,22 @@ button.dolu svg{fill:currentColor;stroke:none}
   var sonDok = 0;
   v.addEventListener('click', function (e) {
     if ($('menu').classList.contains('ac')) { $('menu').classList.remove('ac'); return; }
-    var dok = matchMedia('(pointer:coarse)').matches, simdi = Date.now(), x = e.clientX / innerWidth;
+    // dokunma mı fare mı: son pointer olayından (telefon/APK'da pointer:coarse her zaman doğru gelmiyor)
+    var dok = sonTip === 'touch' || sonTip === 'pen', simdi = Date.now(), x = e.clientX / innerWidth;
     if (dok) {
-      if (simdi - sonDok < 300 && (x < .35 || x > .65)) { atla(x < .5 ? -10 : 10); sonDok = 0; return; }
+      // çift dokunuş kenarda: ±10 sn
+      if (simdi - sonDok < 300 && (x < .35 || x > .65)) { clearTimeout(dokZ); atla(x < .5 ? -10 : 10); sonDok = 0; return; }
       sonDok = simdi;
-      if (kutu.classList.contains('acik') && !v.paused) { kutu.classList.remove('acik'); } else acKontrol();
+      // tek dokunuş: kontroller kapalıysa aç; açıksa oynat/durdur (çift dokunuşla karışmasın diye kısa bekleme)
+      var acikti = kutu.classList.contains('acik');
+      clearTimeout(dokZ);
+      if (!acikti) { acKontrol(); return; }
+      dokZ = setTimeout(function () { oynaDur(); ortaGoster(!v.paused); acKontrol(); }, 260);
     } else { oynaDur(); ortaGoster(!v.paused); }
   });
-  v.addEventListener('dblclick', function () { if (!matchMedia('(pointer:coarse)').matches) tamEkran(); });
+  var sonTip = 'mouse', dokZ = 0;
+  kutu.addEventListener('pointerdown', function (e) { sonTip = e.pointerType || 'mouse'; }, true);
+  v.addEventListener('dblclick', function () { if (sonTip === 'mouse') tamEkran(); });
 
   // ses
   v.volume = oku('ses', 1); v.muted = oku('sessiz', false); $('ses').value = v.muted ? 0 : v.volume;
@@ -401,15 +420,19 @@ button.dolu svg{fill:currentColor;stroke:none}
     if (altSpan.textContent !== s) altSpan.textContent = s; });
 
   // yapay zekâ altyazısı: kayıtlıysa al; eksik kısımları izlerken sesi kaydedip gönder
-  var PARCA = 30, PENCERE = 300;   // izlenen yerin yalnız önündeki 5 dk hazırlanır; izledikçe kayar
+  var PARCA = 120, PENCERE = 480;   // 2 dk parça: istek sayısı 30 sn'ye göre 4'te 1 (günde 20 saatlik izleme ~600 istek) — izlenen yerin yalnız önündeki 5 dk hazırlanır; izledikçe kayar
   function robot(g) { return fetch(ROBOT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(g) }).then(function (r) { return r.json(); }); }
   function aiEkle(l) { aiSatirlar = aiSatirlar.concat(l).sort(function (a, b) { return a.b - b.b; });
     // yapay zekânın bitiş zamanı kısa kalabiliyor: satır, okuma süresi kadar (ve sonraki cümle başlayana dek) ekranda kalsın
     for (var i = 0; i < aiSatirlar.length; i++) { var x = aiSatirlar[i], son = i + 1 < aiSatirlar.length ? aiSatirlar[i + 1].b - 0.05 : 1e9;
       x.s = Math.min(Math.max(x.s, x.b + 1.5 + x.m.length * 0.065), x.b + 9); if (son - x.s < 1.2 && son > x.b) x.s = son; x.s = Math.min(x.s, Math.max(son, x.b + 1)); } if (altSecim === 'tr' && trKaynakIndeks() < 0) satirlar = aiSatirlar; }
+  function anahtar2() { return anahtar + '|2dk'; }
   function altyaziBaslat() {
     if (!anahtar) return;
-    robot({ islem: 'al', k: anahtar }).then(function (j) { (j.parcalar || []).forEach(function (b) { aiParcalar[Math.floor(b / PARCA) * PARCA] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
+    // eski 30 sn kayıtlar (k) gösterilir; 2 dk bloğu ancak 4 parçası da varsa hazır sayılır. Yeni parçalar ayrı anahtarda (k|2dk)
+    robot({ islem: 'al', k: anahtar }).then(function (j) { var say = {}; (j.parcalar || []).forEach(function (b) { var g = Math.floor(b / PARCA) * PARCA; say[g] = (say[g] || 0) + 1; if (say[g] >= 4) aiParcalar[g] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
+      .catch(function () {});
+    robot({ islem: 'al', k: anahtar2() }).then(function (j) { (j.parcalar || []).forEach(function (b) { aiParcalar[Math.floor(b / PARCA) * PARCA] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
       .catch(function () {});
     ondenBekle();
   }
@@ -441,7 +464,7 @@ button.dolu svg{fill:currentColor;stroke:none}
         else if (x && x[0] !== '#') { segler.push({ u: new URL(x, pu).href, b: t }); t += d; } });
       if (!segler.length) throw 0;
       var gruplar = {}; segler.forEach(function (sg) { var g = Math.floor(Math.round(sg.b) / PARCA) * PARCA; (gruplar[g] = gruplar[g] || []).push(sg); });
-      var anahtarlar = Object.keys(gruplar).map(Number).sort(function (a, b) { return a - b; }), calisan = 0, bitti = 0, toplam = anahtarlar.length, ugras = {};
+      var anahtarlar = Object.keys(gruplar).map(Number).sort(function (a, b) { return a - b; }), calisan = 0, bitti = 0, toplam = anahtarlar.length, ugras = {}, hataSay = {};
       anahtarlar.forEach(function (g) { if (aiParcalar[g]) bitti++; });
       function durumYaz() { var su0 = Math.floor(v.currentTime / PARCA) * PARCA, eksik = anahtarlar.some(function (g) { return g >= su0 && g < su0 + 120 && !aiParcalar[g]; }); aiDurum = eksik ? 'Türkçe altyazı hazırlanıyor…' : ''; rozet(); if ($('menu').classList.contains('ac') && menuTur === 'alt') menuKur(); }
       function sonraki() {   // izlenen yerden ileri doğru ilk eksik parça, sonra baştakiler
@@ -457,9 +480,10 @@ button.dolu svg{fill:currentColor;stroke:none}
         Promise.all(liste.map(function (sg) { return fetch(sg.u, { credentials: 'omit' }).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); }); }))
           .then(function (bl) { var ps = bl.map(function (b) { return tsSes(new Uint8Array(b)); }), n = 0; ps.forEach(function (x) { n += x.length; });
             if (!n) throw 0; var hep = new Uint8Array(n), o = 0; ps.forEach(function (x) { hep.set(x, o); o += x.length; });
-            return robot({ islem: 'parca', k: anahtar, bas: Math.round(liste[0].b), mime: 'audio/aac', ses: b64Bayt(hep) }); })
+            return robot({ islem: 'parca', k: anahtar2(), bas: Math.round(liste[0].b), mime: 'audio/aac', ses: b64Bayt(hep) }); })
           .then(function (j) { if (!j || !j.ok) throw 0; aiParcalar[g] = 1; bitti++; aiEkle(j.satirlar || []); })
-          .catch(function () { ugras[g] = (ugras[g] || 1) + 1; if (ugras[g] < 4) setTimeout(function () { delete ugras[g]; }, 5000); })
+          // kota/ağ hatası: vazgeçme — 5 sn, 10 sn ... en çok 60 sn arayla yeniden dene (eskiden 3 denemeden sonra parça kalıcı atlanıyordu, altyazı bölüm ortasında kayboluyordu)
+          .catch(function () { var n = hataSay[g] = (hataSay[g] || 0) + 1; setTimeout(function () { delete ugras[g]; calis(); }, Math.min(60000, 5000 * n)); })
           .then(function () { calisan--; calis(); });
       }
       v.addEventListener('seeked', calis); setInterval(calis, 15000);
@@ -483,7 +507,7 @@ button.dolu svg{fill:currentColor;stroke:none}
         if (bozuk || v.currentTime - basT < 8) return;
         aiParcalar[hedef] = 1; aiDurum = 'Türkçe altyazı hazırlanıyor…'; rozet();
         var blob = new Blob(parcalar, { type: mime }), fr = new FileReader();
-        fr.onload = function () { robot({ islem: 'parca', k: anahtar, bas: Math.round(basT), mime: mime, ses: String(fr.result).split(',')[1] })
+        fr.onload = function () { robot({ islem: 'parca', k: anahtar2(), bas: Math.round(basT), mime: mime, ses: String(fr.result).split(',')[1] })
           .then(function (j) { if (j.ok) aiEkle(j.satirlar || []); else delete aiParcalar[hedef]; aiDurum = ''; rozet(); })
           .catch(function () { delete aiParcalar[hedef]; aiDurum = ''; rozet(); }); };
         fr.readAsDataURL(blob); };

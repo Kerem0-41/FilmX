@@ -228,14 +228,18 @@ async function altyaziParca(env, g) {
   await altTablo(env);
   const var_ = await env.filmx_db.prepare('SELECT veri FROM altyazi WHERE k = ? AND bas = ?').bind(k, bas).first();
   if (var_) return { ok: true, satirlar: JSON.parse(var_.veri) };
-  const simdi = Date.now(), sira = SES_MODELLER.filter(m => !(SES_DINLEN.get(m) > simdi));
-  for (const model of (sira.length ? sira : SES_MODELLER)) {
+  // birden çok anahtar: GEMINI_KEY, GEMINI_KEY2..GEMINI_KEY9 — birinin kotası bitince sıradakiyle devam (bölüm ortasında altyazı kesilmesin)
+  const anahtarlar = [env.GEMINI_KEY, ...[2, 3, 4, 5, 6, 7, 8, 9].map(i => env['GEMINI_KEY' + i])].filter(Boolean);
+  const simdi = Date.now(), hepsi = [];
+  for (const model of SES_MODELLER) anahtarlar.forEach((key, ki) => hepsi.push({ model, key, ad: model + '#' + ki }));
+  const sira = hepsi.filter(x => !(SES_DINLEN.get(x.ad) > simdi));
+  for (const { model, key, ad } of (sira.length ? sira : hepsi)) {
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_KEY },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ inlineData: { mimeType: mime, data: ses } }, { text: ALT_TALIMAT }] }],
           generationConfig: { temperature: 0.2, maxOutputTokens: 4000, responseMimeType: 'application/json' } }) });
-      if (!r.ok) { if (r.status === 429) SES_DINLEN.set(model, Date.now() + 10 * 60000); else if (r.status === 404) SES_DINLEN.set(model, Date.now() + 24 * 3600000); continue; }
+      if (!r.ok) { if (r.status === 429) SES_DINLEN.set(ad, Date.now() + 10 * 60000); else if (r.status === 404) SES_DINLEN.set(ad, Date.now() + 24 * 3600000); continue; }
       const j = await r.json();
       const t = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join('').replace(/```json|```/g, '');
       const a = t.indexOf('['), b = t.lastIndexOf(']'); if (a < 0) continue;
