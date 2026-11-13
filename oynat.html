@@ -415,22 +415,26 @@ button.dolu svg{fill:currentColor;stroke:none}
     rozet();
   }
   function rozet() { $('rozet').style.display = 'none'; return; var r = $('rozet'); if (altSecim === 'tr' && trKaynakIndeks() < 0 && metinIndeks() < 0 && aiDurum) { r.textContent = aiDurum; r.style.display = 'block'; } else r.style.display = 'none'; }
-  v.addEventListener('timeupdate', function () { var t = v.currentTime, s = '';
+  function altCiz() { var t = v.currentTime, s = '';
     if (altSecim !== 'kapali') for (var i = 0; i < satirlar.length; i++) if (t >= satirlar[i].b && t <= satirlar[i].s) { s += (s ? '\n' : '') + satirlar[i].m; }
-    if (altSpan.textContent !== s) altSpan.textContent = s; });
+    if (altSpan.textContent !== s) altSpan.textContent = s; }
+  v.addEventListener('timeupdate', altCiz); v.addEventListener('seeked', altCiz);
 
   // yapay zekâ altyazısı: kayıtlıysa al; eksik kısımları izlerken sesi kaydedip gönder
   var PARCA = 120, PENCERE = 480;   // 2 dk parça: istek sayısı 30 sn'ye göre 4'te 1 (günde 20 saatlik izleme ~600 istek) — izlenen yerin yalnız önündeki 5 dk hazırlanır; izledikçe kayar
   function robot(g) { return fetch(ROBOT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(g) }).then(function (r) { return r.json(); }); }
-  function aiEkle(l) { aiSatirlar = aiSatirlar.concat(l).sort(function (a, b) { return a.b - b.b; });
+  function aiEkle(l) { var gor = {}; aiSatirlar = aiSatirlar.concat(l).sort(function (a, b) { return a.b - b.b; }).filter(function (x) { var k = Math.round(x.b) + '|' + x.m; if (gor[k]) return false; gor[k] = 1; return true; });
     // yapay zekânın bitiş zamanı kısa kalabiliyor: satır, okuma süresi kadar (ve sonraki cümle başlayana dek) ekranda kalsın
     for (var i = 0; i < aiSatirlar.length; i++) { var x = aiSatirlar[i], son = i + 1 < aiSatirlar.length ? aiSatirlar[i + 1].b - 0.05 : 1e9;
-      x.s = Math.min(Math.max(x.s, x.b + 1.5 + x.m.length * 0.065), x.b + 9); if (son - x.s < 1.2 && son > x.b) x.s = son; x.s = Math.min(x.s, Math.max(son, x.b + 1)); } if (altSecim === 'tr' && trKaynakIndeks() < 0) satirlar = aiSatirlar; }
+      x.s = Math.min(Math.max(x.s, x.b + 1.5 + x.m.length * 0.065), x.b + 9); if (son - x.s < 1.2 && son > x.b) x.s = son; x.s = Math.min(x.s, Math.max(son, x.b + 1)); } if (altSecim === 'tr' && trKaynakIndeks() < 0) satirlar = aiSatirlar; altCiz(); }
+  function anahtar3() { return anahtar + '|30s'; }   // izlemeye başlanan yerin ilk 2 dk'sı: 30 sn'lik hızlı parçalar
   function anahtar2() { return anahtar + '|2dk'; }
   function altyaziBaslat() {
     if (!anahtar) return;
     // eski 30 sn kayıtlar (k) gösterilir; 2 dk bloğu ancak 4 parçası da varsa hazır sayılır. Yeni parçalar ayrı anahtarda (k|2dk)
     robot({ islem: 'al', k: anahtar }).then(function (j) { var say = {}; (j.parcalar || []).forEach(function (b) { var g = Math.floor(b / PARCA) * PARCA; say[g] = (say[g] || 0) + 1; if (say[g] >= 4) aiParcalar[g] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
+      .catch(function () {});
+    robot({ islem: 'al', k: anahtar3() }).then(function (j) { var say = {}; (j.parcalar || []).forEach(function (b) { var g = Math.floor(b / PARCA) * PARCA; say[g] = (say[g] || 0) + 1; if (say[g] >= 4) aiParcalar[g] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
       .catch(function () {});
     robot({ islem: 'al', k: anahtar2() }).then(function (j) { (j.parcalar || []).forEach(function (b) { aiParcalar[Math.floor(b / PARCA) * PARCA] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
       .catch(function () {});
@@ -475,7 +479,22 @@ button.dolu svg{fill:currentColor;stroke:none}
         while (calisan < 3) { var g = sonraki(); if (g == null) break; ugras[g] = 1; calisan++; isle(g); }
         durumYaz();
       }
+      var ilkYapildi = false;
+      function sesAl(liste) { return Promise.all(liste.map(function (sg) { return fetch(sg.u, { credentials: 'omit' }).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); }); }))
+        .then(function (bl) { var ps = bl.map(function (b) { return tsSes(new Uint8Array(b)); }), n = 0; ps.forEach(function (x) { n += x.length; });
+          if (!n) throw 0; var hep = new Uint8Array(n), o = 0; ps.forEach(function (x) { hep.set(x, o); o += x.length; }); return hep; }); }
+      function isleHizli(g) {   // bloğu ~30 sn'lik alt parçalara böl, sırayla gönder; her biri gelince ekrana
+        var liste = gruplar[g], alt = {}; liste.forEach(function (sg) { var a = Math.floor((sg.b - g) / 30); (alt[a] = alt[a] || []).push(sg); });
+        var sira = Object.keys(alt).map(Number).sort(function (a, b) { return a - b; });
+        return sira.reduce(function (p, a) { return p.then(function () { var l = alt[a];
+          return sesAl(l).then(function (hep) { return robot({ islem: 'parca', k: anahtar3(), bas: Math.round(l[0].b), mime: 'audio/aac', ses: b64Bayt(hep) }); })
+            .then(function (j) { if (!j || !j.ok) throw 0; aiEkle(j.satirlar || []); }); }); }, Promise.resolve()); }
       function isle(g) {
+        if (!ilkYapildi) { ilkYapildi = true;
+          isleHizli(g).then(function () { aiParcalar[g] = 1; bitti++; })
+            .catch(function () { var n = hataSay[g] = (hataSay[g] || 0) + 1; setTimeout(function () { delete ugras[g]; calis(); }, Math.min(60000, 5000 * n)); })
+            .then(function () { calisan--; calis(); });
+          return; }
         var liste = gruplar[g];
         Promise.all(liste.map(function (sg) { return fetch(sg.u, { credentials: 'omit' }).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); }); }))
           .then(function (bl) { var ps = bl.map(function (b) { return tsSes(new Uint8Array(b)); }), n = 0; ps.forEach(function (x) { n += x.length; });
