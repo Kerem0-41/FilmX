@@ -108,7 +108,7 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
 </head>
 <body>
 <div id="kutu">
-  <video id="v" playsinline preload="metadata"></video>
+  <video id="v" playsinline preload="metadata" poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
   <div id="alt"><span></span></div>
   <div id="durum"><div class="don"></div><div id="dyazi">Yükleniyor…</div></div>
   <div id="orta"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
@@ -142,11 +142,12 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
   var v = $('v'), kutu = $('kutu'), durum = $('durum'), altSpan = document.querySelector('#alt span');
   var hls = null, anahtar = '';
   // KEŞFET kesiti: rastgele sahneden 30 sn, döngü; altyazı/kaldığı yer/geçmiş yok. Ana sayfa postMessage ile sesi açar/durdurur.
-  var KESIT = /[?&]kesit=1/.test(location.search), kesitBas = -1;
+  var KESIT = /[?&]kesit=1/.test(location.search), BEKLE = /[?&]bekle=1/.test(location.search), kesitBas = -1;
   if (KESIT) { document.body.classList.add('kesit'); v.muted = true; v.setAttribute('muted', ''); v.playsInline = true;
     addEventListener('message', function (e) { var d = e.data || {}; if (!d.kesit) return;
-      if (d.kesit === 'ses') { v.muted = !d.acik; if (d.acik) v.volume = 1; }
-      else if (d.kesit === 'dur') v.pause(); else if (d.kesit === 'oyna') { var p = v.play(); if (p && p.catch) p.catch(function () {}); } });
+      if (d.kesit === 'ses') { v.muted = !d.acik; if (d.acik) { v.volume = 1; setTimeout(function () { if (v.paused && !v.ended) { v.muted = true; v.play().catch(function () {}); try { parent.postMessage({ kesit: 'sesEngel' }, '*'); } catch (e) {} } }, 300); } }
+      else if (d.kesit === 'dur') v.pause(); else if (d.kesit === 'oyna') { BEKLE = false; var p = v.play(); if (p && p.catch) p.catch(function () { v.muted = true; v.play().catch(function () {}); }); } });
+    v.addEventListener('canplay', function () { if (BEKLE) try { parent.postMessage({ kesit: 'hazir' }, '*'); } catch (e) {} });
     function kesitYer() { var d = v.duration; if (!isFinite(d) || d < 120) return; if (kesitBas < 0) { kesitBas = Math.floor(d * (0.12 + Math.random() * 0.6)); v.currentTime = kesitBas; } }
     v.addEventListener('loadedmetadata', kesitYer); v.addEventListener('durationchange', kesitYer);
     v.addEventListener('timeupdate', function () { if (kesitBas >= 0 && (v.currentTime > kesitBas + 30 || v.currentTime < kesitBas - 2)) v.currentTime = kesitBas; });
@@ -158,7 +159,7 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
     return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0'); }
   function sakla(k, d) { try { localStorage.setItem('fxo_' + k, JSON.stringify(d)); } catch (e) {} }
   function oku(k, d) { try { var x = localStorage.getItem('fxo_' + k); return x == null ? d : JSON.parse(x); } catch (e) { return d; } }
-  try { var bq = new URLSearchParams(location.search).get('b') || (function () { var e = window.frameElement && window.frameElement.closest('.player-wrap'); e = e && e.querySelector('.player-title'); return e ? e.textContent.replace(/^\s*▶\s*/, '') : ''; })(); $('baslik').textContent = bq; } catch (e) {}
+  try { var bq = new URLSearchParams(location.search).get('b') || (function () { var e = window.frameElement && window.frameElement.closest('.player-wrap'); e = e && e.querySelector('.player-title'); if (e) { e = e.cloneNode(true); e.querySelectorAll('button').forEach(function (b) { b.remove(); }); } return e ? e.textContent.replace(/^\s*▶\s*/, '') : ''; })(); $('baslik').textContent = bq; } catch (e) {}
 
   // ---------- kaynak çözme (eski oynat.html ile aynı adres biçimleri) ----------
   function vmGom(id) { goster(''); kutu.remove(); var f = document.createElement('iframe'); f.src = 'https://vidmoly.org/embed-' + id + '.html';
@@ -241,7 +242,7 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
   }
 
   // kaldığı yerden devam + otomatik oynat
-  function devam() { if (KESIT) { kesitYer(); var p0 = v.play(); if (p0 && p0.catch) p0.catch(function () {}); return; } var t = oku('t_' + anahtar, 0); if (t > 30 && (!v.duration || t < v.duration - 60)) v.currentTime = t;
+  function devam() { if (KESIT) { kesitYer(); if (BEKLE) return; var p0 = v.play(); if (p0 && p0.catch) p0.catch(function () {}); return; } var t = oku('t_' + anahtar, 0); if (t > 30 && (!v.duration || t < v.duration - 60)) v.currentTime = t;
     var p = v.play(); if (p && p.catch) p.catch(function () { v.muted = true; v.play().catch(function () {}); sesCiz(); }); }
   setInterval(function () { if (!KESIT && !v.paused && v.currentTime > 0) sakla('t_' + anahtar, Math.floor(v.currentTime)); }, 5000);
 
@@ -287,12 +288,12 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
       // çift dokunuş kenarda: ±10 sn
       if (simdi - sonDok < 300 && (x < .35 || x > .65)) { clearTimeout(dokZ); atla(x < .5 ? -10 : 10); sonDok = 0; return; }
       sonDok = simdi;
-      // tek dokunuş: kontroller kapalıysa aç; açıksa oynat/durdur (çift dokunuşla karışmasın diye kısa bekleme)
+      // tek dokunuş: video DURMAZ; yalnız kontroller açılır/kapanır (oynat/durdur yalnız düğmeyle). Çift dokunuşla karışmasın diye kısa bekleme
       var acikti = kutu.classList.contains('acik');
       clearTimeout(dokZ);
       if (!acikti) { acKontrol(); return; }
-      dokZ = setTimeout(function () { oynaDur(); ortaGoster(!v.paused); acKontrol(); }, 260);
-    } else { oynaDur(); ortaGoster(!v.paused); }
+      dokZ = setTimeout(function () { if (!v.paused) { clearTimeout(gizleZ); kutu.classList.remove('acik'); } }, 260);
+    } else { acKontrol(); }   // fare: tık videoyu durdurmaz, kontrolleri gösterir
   });
   var sonTip = 'mouse', dokZ = 0;
   kutu.addEventListener('pointerdown', function (e) { sonTip = e.pointerType || 'mouse'; }, true);
@@ -343,10 +344,12 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
   });
 
   // ---------- ayar menüsü: altyazı / kalite / hız ----------
-  var altSecim = oku('alt', 'tr');   // kullanıcı elle seçmediyse: TR dublaj varsa kapalı, yoksa Türkçe
-  var altElle = oku('altElle', false);
+  var altSecim = 'tr';   // her videoda: TR dublaj varsa kapalı, yoksa Türkçe (elle seçim yalnız o video için)
+  var altElle = false;   // elle seçim yalnız bu video için (eskiden kalıcıydı: bir kez seçince otomatik karar hiç çalışmıyordu)
+  var DUB = (function () { try { var P = parent, m = P.DZ && P.DZ.aktif && P.bySlug ? P.bySlug[P.DZ.aktif] : P.curMovie; return !!(m && m.db); } catch (e) { return false; } })();
+  if (DUB) altSecim = 'kapali';
   function trSesIndeks() { var t = (hls && hls.audioTracks) || []; for (var i = 0; i < t.length; i++) if (/^(tr|tur|tür)/i.test(t[i].lang || '') || /türk|turk|dublaj/i.test(t[i].name || '')) return i; return -1; }
-  function trDublajMi() { var i = trSesIndeks(); return i >= 0 && hls.audioTrack === i; }
+  function trDublajMi() { if (DUB) return true; var i = trSesIndeks(); return i >= 0 && hls && hls.audioTrack === i; }
   function sesDiliSec() { var i = trSesIndeks(), elle = oku('sesDil', '');
     if (elle && hls.audioTracks.some(function (t) { return (t.lang || t.name) === elle; })) hls.audioTrack = hls.audioTracks.findIndex(function (t) { return (t.lang || t.name) === elle; });
     else if (i >= 0) hls.audioTrack = i;
@@ -379,7 +382,7 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
   $('bAlt').onclick = function (e) { menuAc('alt', e); };
   $('bAyar').onclick = function (e) { menuAc('ayar', e); };
   $('menu').onclick = function (e) { if (e.target.closest('.kapat')) { e.stopPropagation(); $('menu').classList.remove('ac'); return; } var s = e.target.closest('.s'); if (!s) return; e.stopPropagation();
-    if (s.dataset.a) { altSecim = s.dataset.a; altElle = true; sakla('alt', altSecim); sakla('altElle', true); altyaziUygula(); }
+    if (s.dataset.a) { altSecim = s.dataset.a; altElle = true; altyaziUygula(); }
     if (s.dataset.ses) { var si = +s.dataset.ses, tt = hls.audioTracks[si]; hls.audioTrack = si; sakla('sesDil', tt.lang || tt.name);
       if (!altElle) { altSecim = trDublajMi() ? 'kapali' : 'tr'; altyaziUygula(); } }
     if (s.dataset.q) { var q = +s.dataset.q; if (q < 0) hls.currentLevel = -1; else hls.currentLevel = q; }
