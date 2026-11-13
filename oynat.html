@@ -100,6 +100,10 @@ button.dolu svg{fill:currentColor;stroke:none}
   #orta{width:60px;height:60px;margin:-30px}
 }
 @media (max-width:400px){ #bGeri,#bIleri{display:none} }
+/* KEŞFET kesit modu (oynat.html?kesit=1): kontrol yok, video ekranı doldurur, sessiz başlar */
+body.kesit #ust,body.kesit #alts,body.kesit #alt,body.kesit #menu,body.kesit #orta,body.kesit #sonraki,body.kesit #rozet,body.kesit .atla{display:none!important}
+body.kesit video{object-fit:cover}
+body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
 </style>
 </head>
 <body>
@@ -137,7 +141,18 @@ button.dolu svg{fill:currentColor;stroke:none}
   var $ = function (i) { return document.getElementById(i); };
   var v = $('v'), kutu = $('kutu'), durum = $('durum'), altSpan = document.querySelector('#alt span');
   var hls = null, anahtar = '';
-  function goster(t, don) { $('dyazi').textContent = t; durum.style.display = t ? 'flex' : 'none'; durum.querySelector('.don').style.display = don === false ? 'none' : ''; }
+  // KEŞFET kesiti: rastgele sahneden 30 sn, döngü; altyazı/kaldığı yer/geçmiş yok. Ana sayfa postMessage ile sesi açar/durdurur.
+  var KESIT = /[?&]kesit=1/.test(location.search), kesitBas = -1;
+  if (KESIT) { document.body.classList.add('kesit'); v.muted = true; v.setAttribute('muted', ''); v.playsInline = true;
+    addEventListener('message', function (e) { var d = e.data || {}; if (!d.kesit) return;
+      if (d.kesit === 'ses') { v.muted = !d.acik; if (d.acik) v.volume = 1; }
+      else if (d.kesit === 'dur') v.pause(); else if (d.kesit === 'oyna') { var p = v.play(); if (p && p.catch) p.catch(function () {}); } });
+    function kesitYer() { var d = v.duration; if (!isFinite(d) || d < 120) return; if (kesitBas < 0) { kesitBas = Math.floor(d * (0.12 + Math.random() * 0.6)); v.currentTime = kesitBas; } }
+    v.addEventListener('loadedmetadata', kesitYer); v.addEventListener('durationchange', kesitYer);
+    v.addEventListener('timeupdate', function () { if (kesitBas >= 0 && (v.currentTime > kesitBas + 30 || v.currentTime < kesitBas - 2)) v.currentTime = kesitBas; });
+    v.addEventListener('playing', function () { try { parent.postMessage({ kesit: 'oynuyor' }, '*'); } catch (e) {} }); }
+  function kesitHata() { try { parent.postMessage({ kesit: 'hata' }, '*'); } catch (e) {} }
+  function goster(t, don) { if (don === false && t && typeof KESIT !== 'undefined' && KESIT) kesitHata(); $('dyazi').textContent = t; durum.style.display = t ? 'flex' : 'none'; durum.querySelector('.don').style.display = don === false ? 'none' : ''; }
   function b64(s) { return decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))); }
   function saat(s) { s = Math.max(0, Math.floor(s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
     return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0'); }
@@ -160,7 +175,7 @@ button.dolu svg{fill:currentColor;stroke:none}
     var yol = u.indexOf(KAPI) === 0 ? u.slice(KAPI.length) : new URL(u).pathname;
     return UST.cihazHazirla().then(function () { return UST.imzaBaslik('GET', yol); }).then(function (hd) { return fetch(u, { headers: hd }); }); }
   // başka sitenin oynatıcısı (son çare): kendi oynatıcımız çözemezse
-  function iframeGom(u) { goster(''); kutu.remove(); var f = document.createElement('iframe'); f.src = u; f.allow = 'autoplay; fullscreen; encrypted-media'; f.allowFullscreen = true;
+  function iframeGom(u) { if (KESIT) { kesitHata(); return; } goster(''); kutu.remove(); var f = document.createElement('iframe'); f.src = u; f.allow = 'autoplay; fullscreen; encrypted-media'; f.allowFullscreen = true;
     f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0'; document.body.appendChild(f); }
   // dizi82 oynatıcısı (…/player/<kimlik>): m3u8 aynı kimlikle açık sunucuda
   var D82_SUNUCU = ['https://one.makesomthingup.click/'];
@@ -226,9 +241,9 @@ button.dolu svg{fill:currentColor;stroke:none}
   }
 
   // kaldığı yerden devam + otomatik oynat
-  function devam() { var t = oku('t_' + anahtar, 0); if (t > 30 && (!v.duration || t < v.duration - 60)) v.currentTime = t;
+  function devam() { if (KESIT) { kesitYer(); var p0 = v.play(); if (p0 && p0.catch) p0.catch(function () {}); return; } var t = oku('t_' + anahtar, 0); if (t > 30 && (!v.duration || t < v.duration - 60)) v.currentTime = t;
     var p = v.play(); if (p && p.catch) p.catch(function () { v.muted = true; v.play().catch(function () {}); sesCiz(); }); }
-  setInterval(function () { if (!v.paused && v.currentTime > 0) sakla('t_' + anahtar, Math.floor(v.currentTime)); }, 5000);
+  setInterval(function () { if (!KESIT && !v.paused && v.currentTime > 0) sakla('t_' + anahtar, Math.floor(v.currentTime)); }, 5000);
 
   // ---------- sonraki bölüm: dizi sayfasındaki (üst pencere) bölüm listesinde aktif olanın bir sonrakisi ----------
   // sezonun son bölümündeyse sonraki sezonun 1. bölümü (DZ.grup: sezon sekmeleri sırasıyla)
@@ -430,6 +445,7 @@ button.dolu svg{fill:currentColor;stroke:none}
   function anahtar3() { return anahtar + '|30s'; }   // izlemeye başlanan yerin ilk 2 dk'sı: 30 sn'lik hızlı parçalar
   function anahtar2() { return anahtar + '|2dk'; }
   function altyaziBaslat() {
+    if (KESIT) return;
     if (!anahtar) return;
     // eski 30 sn kayıtlar (k) gösterilir; 2 dk bloğu ancak 4 parçası da varsa hazır sayılır. Yeni parçalar ayrı anahtarda (k|2dk)
     robot({ islem: 'al', k: anahtar }).then(function (j) { var say = {}; (j.parcalar || []).forEach(function (b) { var g = Math.floor(b / PARCA) * PARCA; say[g] = (say[g] || 0) + 1; if (say[g] >= 4) aiParcalar[g] = 1; }); aiEkle(j.satirlar || []); menuKur(); })
