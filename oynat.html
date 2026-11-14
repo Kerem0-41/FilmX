@@ -271,7 +271,7 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
   function ortaGoster(oyn) { var o = $('orta'); o.querySelector('svg').innerHTML = oyn ? '<path d="M8 5v14l11-7z"/>' : '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
     o.classList.add('goster'); setTimeout(function () { o.classList.remove('goster'); }, 450); }
   // oynat/durdur simgesi: değişirken küçülüp dönerek geçer
-  function oynaCiz() { var b = $('bOyna'), s = b.querySelector('svg'), yeni = v.paused ? '<path d="M8 5v14l11-7z"/>' : '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+  function oynaCiz() { var b = $('bOyna'), s = b && b.querySelector('svg'); if (!s) return; var yeni = v.paused ? '<path d="M8 5v14l11-7z"/>' : '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
     if (s.innerHTML === yeni) return; s.innerHTML = yeni; b.classList.remove('gecis'); void b.offsetWidth; b.classList.add('gecis'); }
   v.addEventListener('play', function () { oynaCiz(); acKontrol(); });
   v.addEventListener('pause', function () { oynaCiz(); acKontrol(); kutu.classList.add('acik'); });
