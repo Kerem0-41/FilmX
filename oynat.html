@@ -257,8 +257,9 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
     var goster = d - v.currentTime <= 30 && !!sonrakiBolum(); $('sonraki').classList.toggle('goster', goster); });
   v.addEventListener('ended', function () { if (sonrakiBolum()) { $('sonraki').classList.add('goster'); kutu.classList.add('acik'); } });
   $('sonraki').onclick = function (e) { e.stopPropagation(); var n = sonrakiBolum(); if (!n) return;
+    // üst sayfa tam ekranı (#dzOyn) korunur; yalnız eski tarz iç tam ekran kapanır (iframe yenileniyor)
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch (x) {}
-    if (n.DZ.gi !== n.g && n.DZ.grupSec) n.DZ.grupSec(n.g); n.DZ.oynat(n.m.s); };
+    if (n.DZ.gi !== n.g && n.DZ.grupSec) n.DZ.grupSec(n.g); n.DZ.oynat(n.m.s, true); };
   v.addEventListener('loadedmetadata', function () { var n = sonrakiBolum(); $('sonraki').querySelector('span').textContent = n && n.yeniSezon ? 'Sonraki sezon' : 'Sonraki bölüm'; });
 
   // ---------- kontroller ----------
@@ -323,7 +324,13 @@ body.kesit #durum{background:transparent}body.kesit #dyazi{display:none}
     cizgi.onpointerup = function (ev) { cizgi.onpointermove = cizgi.onpointerup = null; cizgi.classList.remove('surukle'); if (v.duration) v.currentTime = oran(ev) * v.duration; acKontrol(); }; });
 
   // tam ekran + PiP
-  function tamEkran() { var d = document; if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  // dizide tam ekran üst sayfadaki kalıcı kutuda (#dzOyn): sonraki bölüme geçince oynatıcı yenilense de tam ekran bozulmaz
+  function dizKutu() { try { var f = window.frameElement; return f && f.closest ? f.closest('#dzOyn') : null; } catch (e) { return null; } }
+  function tamEkran() { var d = document, dk = dizKutu();
+    if (dk) { var pd = parent.document; if (pd.fullscreenElement || pd.webkitFullscreenElement) (pd.exitFullscreen || pd.webkitExitFullscreen).call(pd);
+      else { var r = dk.requestFullscreen ? dk.requestFullscreen() : (dk.webkitRequestFullscreen && dk.webkitRequestFullscreen()); if (r && r.then) r.then(function () { try { parent.screen.orientation.lock('landscape').catch(function () {}); } catch (e) {} }).catch(function () {}); }
+      return; }
+    if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
     else if (kutu.requestFullscreen) kutu.requestFullscreen().then(function () { try { screen.orientation.lock('landscape').catch(function () {}); } catch (e) {} }).catch(function () {});
     else if (kutu.webkitRequestFullscreen) kutu.webkitRequestFullscreen(); else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen(); }
   $('bTam').onclick = tamEkran;
